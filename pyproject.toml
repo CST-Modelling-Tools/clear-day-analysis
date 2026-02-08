@@ -17,4 +17,4 @@ dependencies = [
 
 [tool.scikit-build]
 cmake.minimum-version = "3.20"
-wheel.packages = ["clear_day_analysis"]
+wheel.packages = ["src/clear_day_analysis"]

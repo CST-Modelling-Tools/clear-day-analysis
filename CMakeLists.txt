@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # pybind11 provided by your Python build env (pip install pybind11)
+set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 
 # Build the external submodule library target: sunpos
@@ -18,4 +19,7 @@ pybind11_add_module(_sunpos cpp/bindings/sunpos_pybind.cpp)
 target_link_libraries(_sunpos PRIVATE sunpos)
 
 # Install extension into the package directory inside the wheel
-install(TARGETS _sunpos LIBRARY DESTINATION clear_day_analysis)
+install(TARGETS _sunpos
+  LIBRARY DESTINATION clear_day_analysis
+  RUNTIME DESTINATION clear_day_analysis
+)
