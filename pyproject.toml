@@ -1,0 +1,13 @@
+[project]
+name = "clear-day-analysis"
+version = "0.1.0"
+description = "Clear-day envelope and TMY classification tools"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "pandas",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
