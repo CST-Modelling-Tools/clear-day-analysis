@@ -1,13 +1,20 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.9",
+    "pybind11>=2.11",
+]
+build-backend = "scikit_build_core.build"
+
 [project]
 name = "clear-day-analysis"
 version = "0.1.0"
 description = "Clear-day envelope and TMY classification tools"
 requires-python = ">=3.10"
-
 dependencies = [
     "numpy",
     "pandas",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.scikit-build]
+cmake.minimum-version = "3.20"
+wheel.packages = ["clear_day_analysis"]
