@@ -1,3 +1,4 @@
+from pathlib import Path
 from clear_day_analysis.tmy_reader import read_nsrdb_tmy_csv
 from clear_day_analysis import compute_sun_position_columns
 from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
@@ -102,6 +103,12 @@ print(daily_cls.sort_values("ratio", ascending=False).head(10)[["date", "ratio",
 print("\nBottom 10 cloudiest days by ratio:")
 print(daily_cls.sort_values("ratio", ascending=True).head(10)[["date", "ratio", "H_dni", "H_dni_clear", "n_points"]])
 
-out_csv = "daily_classification.csv"
+tmy_path = Path(path)
+
+out_csv = (
+    tmy_path.parent
+    / f"{tmy_path.stem}_daily_classification.csv"
+)
+
 daily_cls.to_csv(out_csv, index=False)
-print(f"\nWrote: {out_csv}")
+print(f"Wrote: {out_csv}")
