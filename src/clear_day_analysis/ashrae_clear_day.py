@@ -6,7 +6,6 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
-
 OutlierMode = Literal["lower", "two_sided"]
 
 
@@ -16,18 +15,41 @@ class IterationInfo:
     n_in: int
     n_outliers: int
     n_kept: int
-    a: float                # intercept in log-space = ln(E0)  (OLS line, not envelope-shifted)
-    b: float                # slope in log-space = -beta
+    a: float                # intercept in log-space = ln(E0) (OLS line)
+    b: float                # slope in log-space = -beta (OLS line)
     rmse: float             # RMSE in log-space
     tcrit: float            # t critical used
     confidence: float
 
 
 @dataclass(frozen=True)
+class IterationSnapshot:
+    """
+    Optional heavy snapshot for plotting/debugging the iterative process.
+
+    Arrays are in the same order as the points for that iteration.
+    - x = 1/sin(alpha)
+    - y = ln(DNI)
+    - yhat = a + b x  (OLS line for that iteration, BEFORE envelope shift)
+    - lower/upper = Student-t prediction corridor
+    - keep_mask marks points kept after outlier rejection for that iteration
+    """
+    iteration: int
+    x: np.ndarray
+    y: np.ndarray
+    yhat: np.ndarray
+    lower: np.ndarray
+    upper: np.ndarray
+    keep_mask: np.ndarray  # True for kept points
+
+
+@dataclass(frozen=True)
 class AshraeFitResult:
-    # Final parameters returned (may be envelope-shifted if enforce_envelope=True)
+    # Final (possibly envelope-shifted) parameters:
     E0: float
     beta: float
+
+    # Underlying (pre-envelope) last-iteration OLS line in log-space:
     a: float
     b: float
 
@@ -39,10 +61,13 @@ class AshraeFitResult:
     n_final: int
     history: list[IterationInfo]
 
-    # Envelope shift diagnostics
+    # Envelope details:
     enforce_envelope: bool
     envelope_quantile: float
-    delta_a: float  # amount added to 'a' in log-space to enforce envelope (0 if disabled)
+    delta_a: float  # log-space upward shift applied to a (>=0)
+
+    # Optional snapshots for plotting:
+    snapshots: Optional[list[IterationSnapshot]]
 
 
 def _t_critical(confidence: float, df: int) -> float:
@@ -111,10 +136,7 @@ def _prediction_band(
 
     tcrit = _t_critical(confidence, df)
 
-    # Prediction interval standard error at each x:
-    # s * sqrt( 1 + 1/n + (x - xbar)^2 / Sxx )
     se_pred = s * np.sqrt(1.0 + (1.0 / n) + ((x - xbar) ** 2) / Sxx)
-
     halfwidth = tcrit * se_pred
     rmse = float(np.sqrt(SSE / n))
 
@@ -131,19 +153,23 @@ def fit_ashrae_clear_day(
     outlier_mode: OutlierMode = "lower",
     max_iter: int = 25,
     min_points: int = 200,
+    # convergence controls:
     eps_a: float = 1e-4,
     eps_b: float = 1e-4,
-    min_outliers_to_continue: int = 0,
-    enforce_envelope: bool = False,
+    min_outliers_to_continue: int = 1,
+    # envelope controls:
+    enforce_envelope: bool = True,
     envelope_quantile: float = 0.98,
+    # debugging/plotting:
+    record_snapshots: bool = False,
 ) -> AshraeFitResult:
     """
     Fit ASHRAE clear-day model using iterative OLS + Student-t corridor outlier rejection.
 
-    Model (after log transform):
+    Model:
       DNI = E0 * exp( -beta / sin(alpha) )
       y = ln(DNI) = a + b x
-      with x = 1 / sin(alpha), a = ln(E0), b = -beta
+      x = 1 / sin(alpha), a = ln(E0), b = -beta
 
     Data selection:
       DNI > 0
@@ -152,25 +178,17 @@ def fit_ashrae_clear_day(
     Outlier corridor:
       Student-t prediction interval in y-space.
       - outlier_mode="lower": remove points below (y < yhat - halfwidth)
-      - outlier_mode="two_sided": remove points outside [lower, upper]
+      - outlier_mode="two_sided": remove points outside
 
-    Convergence:
-      Stop if either:
-        (1) n_outliers <= min_outliers_to_continue, OR
-        (2) parameter stabilization: |Δa| < eps_a AND |Δb| < eps_b
+    Envelope enforcement:
+      After convergence, shift a upward by delta_a so that a high-quantile of residuals is at 0:
+        r = y - (a + b x)
+        delta_a = max(0, quantile(r, envelope_quantile))
+      This multiplies E0 by exp(delta_a) and leaves beta unchanged.
 
-    Optional envelope enforcement (recommended for integral-ratio classification):
-      If enforce_envelope=True, after the iterative fit converges, we apply a FINAL
-      upward parallel shift in log-space:
-          delta_a = quantile( y - (a + b x), envelope_quantile )
-          a_env = a + delta_a
-      This keeps slope b (=> beta) unchanged and increases E0 so the resulting curve
-      behaves more like an envelope (reduces daily ratios > 1).
-
-    Notes:
-      - For correct t-Student critical values, install SciPy:
-          pip install scipy
-        Without SciPy, we fall back to a normal approximation.
+    record_snapshots:
+      If True, stores per-iteration point sets and corridor arrays for plotting.
+      This can be memory heavy; keep False for normal runs.
     """
     if dni_col not in df.columns:
         raise KeyError(f"Missing DNI column: {dni_col}")
@@ -180,17 +198,12 @@ def fit_ashrae_clear_day(
         raise ValueError("confidence must be between 0 and 1 (e.g., 0.95).")
     if max_iter < 1:
         raise ValueError("max_iter must be >= 1.")
-    if eps_a < 0 or eps_b < 0:
-        raise ValueError("eps_a and eps_b must be >= 0.")
-    if min_outliers_to_continue < 0:
-        raise ValueError("min_outliers_to_continue must be >= 0.")
     if not (0.0 < envelope_quantile < 1.0):
         raise ValueError("envelope_quantile must be between 0 and 1 (e.g., 0.98).")
 
     dni = pd.to_numeric(df[dni_col], errors="coerce").to_numpy(dtype=float)
     elev_deg = pd.to_numeric(df[elevation_col], errors="coerce").to_numpy(dtype=float)
 
-    # Initial filter
     mask = np.isfinite(dni) & np.isfinite(elev_deg) & (dni > 0.0) & (elev_deg >= alpha_min_deg)
     idx = np.where(mask)[0]
 
@@ -201,16 +214,12 @@ def fit_ashrae_clear_day(
         )
 
     history: list[IterationInfo] = []
+    snapshots: Optional[list[IterationSnapshot]] = [] if record_snapshots else None
+
     converged = False
 
     prev_a: Optional[float] = None
     prev_b: Optional[float] = None
-
-    # Keep the last valid (x,y,a,b) for envelope enforcement
-    last_x: Optional[np.ndarray] = None
-    last_y: Optional[np.ndarray] = None
-    last_a: Optional[float] = None
-    last_b: Optional[float] = None
 
     for it in range(1, max_iter + 1):
         n_in = len(idx)
@@ -221,15 +230,14 @@ def fit_ashrae_clear_day(
         good = np.isfinite(sin_alpha) & (sin_alpha > 0.0)
         idx = idx[good]
         n_in = len(idx)
-
         if n_in < 3:
             break
 
-        x = 1.0 / sin_alpha[good]  # 1/sin(alpha)
-        y = np.log(dni[idx])       # ln(DNI)
+        sin_use = sin_alpha[good]
+        x = 1.0 / sin_use
+        y = np.log(dni[idx])
 
         a, b = _ols_line(x, y)
-
         yhat, halfwidth, rmse, tcrit = _prediction_band(x, y, a, b, confidence)
         lower = yhat - halfwidth
         upper = yhat + halfwidth
@@ -258,58 +266,67 @@ def fit_ashrae_clear_day(
             )
         )
 
-        # Save last valid state for potential envelope shift
-        last_x = x
-        last_y = y
-        last_a = float(a)
-        last_b = float(b)
+        if record_snapshots and snapshots is not None:
+            snapshots.append(
+                IterationSnapshot(
+                    iteration=it,
+                    x=x.copy(),
+                    y=y.copy(),
+                    yhat=yhat.copy(),
+                    lower=lower.copy(),
+                    upper=upper.copy(),
+                    keep_mask=keep.copy(),
+                )
+            )
 
-        # Convergence (2): parameter stabilization
-        if prev_a is not None and prev_b is not None:
-            if abs(a - prev_a) < eps_a and abs(b - prev_b) < eps_b:
+        # Convergence checks
+        da = abs(a - prev_a) if prev_a is not None else np.inf
+        db = abs(b - prev_b) if prev_b is not None else np.inf
+
+        # Stop if no (or too few) outliers removed
+        if n_outliers < min_outliers_to_continue:
+            if (da <= eps_a) and (db <= eps_b):
                 converged = True
-                break
+            else:
+                # still accept convergence if no effective trimming happening
+                converged = True
+            break
 
-        prev_a = float(a)
-        prev_b = float(b)
-
-        # Convergence (1): (near-)no outliers removed
-        if n_outliers <= min_outliers_to_continue:
+        if (da <= eps_a) and (db <= eps_b):
             converged = True
             break
 
+        prev_a, prev_b = float(a), float(b)
+
         # Update idx to kept points
         idx = idx[keep]
-
         if len(idx) < 3:
             break
 
     if not history:
         raise RuntimeError("Fitting failed: no iterations completed.")
 
-    # Final line from last iteration recorded
-    last_hist = history[-1]
-    a_final = float(last_hist.a)
-    b_final = float(last_hist.b)
+    last = history[-1]
+    a_final = float(last.a)
+    b_final = float(last.b)
 
-    # Optional envelope enforcement: shift intercept upward in log-space
+    # Envelope shift (computed on the final retained set, using the last OLS line)
     delta_a = 0.0
     if enforce_envelope:
-        if last_x is None or last_y is None or last_a is None or last_b is None:
-            raise RuntimeError("Internal error: missing final x/y for envelope enforcement.")
+        elev_rad = np.deg2rad(elev_deg[idx])
+        sin_alpha = np.sin(elev_rad)
+        good = np.isfinite(sin_alpha) & (sin_alpha > 0.0)
+        idx2 = idx[good]
+        if len(idx2) >= 10:
+            x2 = 1.0 / np.sin(np.deg2rad(elev_deg[idx2]))
+            y2 = np.log(dni[idx2])
+            resid = y2 - (a_final + b_final * x2)
+            q = float(np.quantile(resid, envelope_quantile))
+            delta_a = float(max(0.0, q))
 
-        yhat_last = last_a + last_b * last_x
-        resid_last = last_y - yhat_last
+    a_env = a_final + delta_a
 
-        # We want the envelope above most points: shift so that a high quantile residual becomes 0
-        # If this quantile is negative (rare), do not shift downward.
-        q = float(np.quantile(resid_last, envelope_quantile))
-        delta_a = max(0.0, q)
-
-        a_final = a_final + delta_a
-        # b_final unchanged
-
-    E0 = float(np.exp(a_final))
+    E0 = float(np.exp(a_env))
     beta = float(-b_final)
 
     return AshraeFitResult(
@@ -322,9 +339,10 @@ def fit_ashrae_clear_day(
         outlier_mode=outlier_mode,
         max_iter=int(max_iter),
         converged=converged,
-        n_final=int(last_hist.n_kept),
+        n_final=int(last.n_kept),
         history=history,
         enforce_envelope=bool(enforce_envelope),
         envelope_quantile=float(envelope_quantile),
         delta_a=float(delta_a),
+        snapshots=snapshots,
     )
