@@ -94,6 +94,7 @@ def daily_dni_integral_ratio(
     clear_col: str = "dni_clear_model",
     alpha_min_deg: Optional[float] = None,
     elevation_col: str = "sun_elevation_deg",
+    sort_by_month_day: bool = True,
 ) -> pd.DataFrame:
     """
     Compute daily integrals and ratio:
@@ -108,6 +109,11 @@ def daily_dni_integral_ratio(
       - DNI finite and >= 0
       - DNI_clear finite and > 0
       - If alpha_min_deg is provided: elevation >= alpha_min_deg
+
+    Ordering (TMY note):
+      NSRDB TMY uses real calendar years that may vary by month. If pandas sorts by the
+      full date key (YYYY-MM-DD), the resulting daily table can appear "scrambled".
+      By default, we return days sorted by (month, day), which is the natural TMY order.
 
     Returns a DataFrame with columns:
       date, H_dni, H_dni_clear, ratio, n_points, dt_hours
@@ -136,8 +142,10 @@ def daily_dni_integral_ratio(
     tmp["dni_w"] = dni[use] * dt_hours
     tmp["dni_clear_w"] = dni_clear[use] * dt_hours
 
+    # IMPORTANT: sort=False preserves first-appearance order of dates in the input.
+    # This avoids pandas sorting by actual year (which can "scramble" TMY outputs).
     daily = (
-        tmp.groupby("date", as_index=False)
+        tmp.groupby("date", as_index=False, sort=False)
         .agg(H_dni=("dni_w", "sum"), H_dni_clear=("dni_clear_w", "sum"), n_points=("dni_w", "size"))
     )
 
@@ -145,8 +153,17 @@ def daily_dni_integral_ratio(
     daily["ratio"] = np.where(daily["H_dni_clear"] > 0.0, daily["H_dni"] / daily["H_dni_clear"], 0.0)
     daily["dt_hours"] = dt_hours
 
-    return daily
+    # Optional: enforce TMY-friendly ordering by (month, day)
+    if sort_by_month_day:
+        d = pd.to_datetime(daily["date"])
+        daily = (
+            daily.assign(_month=d.dt.month, _day=d.dt.day)
+                 .sort_values(["_month", "_day"], kind="stable")
+                 .drop(columns=["_month", "_day"])
+                 .reset_index(drop=True)
+        )
 
+    return daily
 
 def classify_days_by_ratio(
     daily_df: pd.DataFrame,

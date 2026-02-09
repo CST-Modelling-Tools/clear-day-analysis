@@ -15,6 +15,16 @@ dependencies = [
     "pandas",
 ]
 
-[tool.scikit-build]
-cmake.minimum-version = "3.20"
-wheel.packages = ["src/clear_day_analysis"]
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  # Build helpers: make CI more reliable across OS
+  "cmake>=3.20",
+  "ninja",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-q"
