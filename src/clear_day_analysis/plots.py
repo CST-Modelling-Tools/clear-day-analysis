@@ -173,13 +173,24 @@ def _class_patches(alpha: float = 0.30) -> list[Patch]:
         for c in DAY_CLASS_ORDER
     ]
 
+def _lerp_hex(c0: str, c1: str, t: float) -> str:
+    """Linear interpolate two hex colors (#RRGGBB)."""
+    t = float(np.clip(t, 0.0, 1.0))
+    c0 = c0.lstrip("#")
+    c1 = c1.lstrip("#")
+    r0, g0, b0 = int(c0[0:2], 16), int(c0[2:4], 16), int(c0[4:6], 16)
+    r1, g1, b1 = int(c1[0:2], 16), int(c1[2:4], 16), int(c1[4:6], 16)
+    r = int(round(r0 + (r1 - r0) * t))
+    g = int(round(g0 + (g1 - g0) * t))
+    b = int(round(b0 + (b1 - b0) * t))
+    return f"#{r:02X}{g:02X}{b:02X}"
 
 # -----------------------------
 # Plots
 # -----------------------------
 def plot_fit_iterations(
-    fit: AshraeFitResult,
-    paths: PlotPaths,
+    fit,
+    paths,
     *,
     max_plots: Optional[int] = None,
     dpi: int = 150,
@@ -187,8 +198,12 @@ def plot_fit_iterations(
 ) -> list[Path]:
     """
     Create one PNG per iteration showing:
-      points, OLS line, corridor, and outliers.
-    Uses fit.snapshots (requires record_snapshots=True).
+      - kept points (blue)
+      - rejected points (red → purple gradient by iteration index)
+      - OLS line
+      - Student-t corridor
+
+    All points use identical marker shape and size for visual consistency.
     """
     _apply_theme()
 
@@ -197,54 +212,86 @@ def plot_fit_iterations(
 
     paths.iterations_dir.mkdir(parents=True, exist_ok=True)
 
-    written: list[Path] = []
-    snaps: Iterable[IterationSnapshot] = fit.snapshots
+    snaps = list(fit.snapshots)
     if max_plots is not None:
-        snaps = list(snaps)[: max_plots]
+        snaps = snaps[:max_plots]
+
+    n_iter = len(fit.snapshots)
 
     subtitle = _build_subtitle(paths, context)
 
-    for s in snaps:
+    written: list[Path] = []
+
+    for i, s in enumerate(snaps, start=1):
+
         x = s.x
         y = s.y
         keep = s.keep_mask
 
+        # --- Color evolution for rejected points ---
+        # Early iteration → strong red
+        # Late iteration → purple (red+blue mix)
+        t = 0.0 if n_iter <= 1 else (i - 1) / (n_iter - 1)
+        rejected_color = _lerp_hex("#D73027", "#762A83", t)
+
+        kept_color = "#2166AC"  # deep blue
+
         fig = plt.figure(figsize=FIGSIZE_16_9)
         ax = fig.add_subplot(1, 1, 1)
 
-        ax.scatter(x[keep], y[keep], s=14, alpha=0.85, label="Kept points")
-        ax.scatter(x[~keep], y[~keep], s=26, marker="x", alpha=0.9, label="Outliers")
-
-        order = np.argsort(x)
-        ax.plot(x[order], s.yhat[order], color=PRIMARY_INK, linewidth=2.2, label="OLS fit")
-        ax.plot(
-            x[order],
-            s.lower[order],
-            color=PRIMARY_INK,
-            linewidth=1.6,
+        # --- Rejected points ---
+        ax.scatter(
+            x[~keep],
+            y[~keep],
+            s=18,
+            marker="o",
+            linewidths=0.0,
             alpha=0.85,
-            label=f"{int(round(fit.confidence * 100))}% Student-t corridor",
+            color=rejected_color,
+            label="Rejected points",
+            zorder=1,
         )
-        ax.plot(x[order], s.upper[order], color=PRIMARY_INK, linewidth=1.6, alpha=0.85)
 
-        ax.grid(True, alpha=0.25, linewidth=0.8)
+        # --- Kept points ---
+        ax.scatter(
+            x[keep],
+            y[keep],
+            s=18,
+            marker="o",
+            linewidths=0.0,
+            alpha=0.90,
+            color=kept_color,
+            label="Kept points",
+            zorder=3,
+        )
+
+        # --- OLS line + corridor ---
+        order = np.argsort(x)
+        ax.plot(x[order], s.yhat[order], linewidth=2.2, color="#053061", label="OLS line")
+        ax.plot(x[order], s.lower[order], linewidth=1.6, color="#053061")
+        ax.plot(x[order], s.upper[order], linewidth=1.6, color="#053061")
+
+        ax.set_xlim(0.0, 12.0)
+        ax.set_ylim(-0.5, 8.0)
 
         ax.set_xlabel("x = 1/sin(Sun Elevation) (-)")
         ax.set_ylabel("ln[Direct Normal Irradiance (W/m²)] (-)")
+
+        ax.grid(True)
 
         _apply_header(
             fig,
             title=f"Clear-day fit iteration {s.iteration:02d} (OLS + Student-t corridor)",
             subtitle=subtitle,
         )
-        ax.legend(loc="best", frameon=True)
+
+        ax.legend(loc="lower right", frameon=True)
 
         out = paths.iterations_dir / f"iter_{s.iteration:02d}.png"
         _finalize_and_save(fig, out, dpi=dpi)
         written.append(out)
 
     return written
-
 
 def plot_clearness_index_timeseries(
     daily: pd.DataFrame,
@@ -579,3 +626,217 @@ def plot_day_examples_grid(
     out = paths.base_dir / f"{paths.prefix}_day_examples_grid.png"
     _finalize_and_save(fig, out, dpi=dpi)
     return out
+
+def plot_fit_final_summary(
+    fit,
+    paths,
+    *,
+    dpi: int = 150,
+    context=None,
+    xlim: tuple[float, float] = (0.0, 12.0),
+    ylim: tuple[float, float] = (-0.5, 8.0),
+) -> Path:
+    """
+    Final summary plot:
+      - Points kept in final set (blue)
+      - All rejected points (colored by iteration: red -> purple as iteration increases)
+      - Final OLS line + final Student-t corridor (final iteration, before envelope shift)
+      - Final envelope line (shifted up in log-space)
+
+    Writes the PNG:
+      - next to the TMY (paths.base_dir)
+      - ALSO inside paths.iterations_dir
+    """
+    _apply_theme()
+
+    if not getattr(fit, "snapshots", None):
+        raise ValueError("fit.snapshots is empty. Re-run fit_ashrae_clear_day(record_snapshots=True).")
+
+    # --- Colors (kept vs rejected gradient) ---
+    kept_color = "#2166AC"      # deep blue (kept points)
+    # rejected gradient start/end (never equals kept_color)
+    rej_start = "#D73027"       # strong red
+    rej_end = "#762A83"         # purple (red+blue)
+
+    # Lines:
+    ols_color = "#053061"       # dark blue for OLS line + corridor
+    env_color = "#2CA25F"       # green for envelope line (distinct)
+
+    snaps = list(fit.snapshots)
+    last = snaps[-1]  # final OLS snapshot (before envelope shift)
+
+    x_all = last.x
+    y_all = last.y
+    keep_final = last.keep_mask
+
+    order = np.argsort(x_all)
+    x_sorted = x_all[order]
+    yhat_sorted = last.yhat[order]
+    lower_sorted = last.lower[order]
+    upper_sorted = last.upper[order]
+
+    # --- Envelope shift in log-space (if present) ---
+    delta_a = float(getattr(fit, "delta_a", 0.0) or 0.0)
+    yhat_env_sorted = yhat_sorted + delta_a
+
+    # --- Determine final OLS (a, b) robustly ---
+    # Prefer history if present (most reliable).
+    if getattr(fit, "history", None):
+        a_ols = float(fit.history[-1].a)
+        b_ols = float(fit.history[-1].b)  # b = -beta
+    else:
+        a_ols = float(getattr(fit, "a", np.nan))
+        b_ols = float(getattr(fit, "b", np.nan))
+
+    # Envelope intercept (log-space)
+    a_env = a_ols + delta_a
+
+    # --- Build equation text: show BOTH final OLS and final Envelope in log form only ---
+    # Requested format:
+    #   ln[DNI (W/m2)] = ln[Io_value] - beta_value x
+    # but we have b_ols = -beta, so:
+    #   ln[DNI] = a_ols + b_ols x
+    # and Io = exp(a)
+
+    minus = "\u2212"
+    E0_ols = float(np.exp(a_ols)) if np.isfinite(a_ols) else float("nan")
+    E0_env = float(np.exp(a_env)) if np.isfinite(a_env) else float("nan")
+    beta = float(-b_ols) if np.isfinite(b_ols) else float("nan")
+
+    # Keep the "ln[Io]" form explicitly (as requested)
+    eq_ols = f"OLS:      ln[DNI (W/m²)] = ln[{E0_ols:.1f}] {minus} {beta:.5f} x"
+    eq_env = f"Envelope: ln[DNI (W/m²)] = ln[{E0_env:.1f}] {minus} {beta:.5f} x"
+
+    # --- Figure ---
+    fig = plt.figure(figsize=FIGSIZE_16_9)
+    ax = fig.add_subplot(1, 1, 1)
+
+    # --- Rejected points from ALL iterations, colored by iteration ---
+    n_iter = len(snaps)
+    for i, s in enumerate(snaps, start=1):
+        rej = ~s.keep_mask
+        if not np.any(rej):
+            continue
+
+        # early iterations -> red, late iterations -> purple
+        t = 0.0 if n_iter <= 1 else (i - 1) / (n_iter - 1)
+        c = _lerp_hex(rej_start, rej_end, t)
+
+        ax.scatter(
+            s.x[rej],
+            s.y[rej],
+            s=18,
+            marker="o",           # same symbol as kept points
+            linewidths=0.0,
+            alpha=0.85,
+            color=c,
+            zorder=1 + i * 0.001,  # tiny zorder increase so later iterations sit above earlier ones
+        )
+
+    # --- Kept points (final set) ---
+    ax.scatter(
+        x_all[keep_final],
+        y_all[keep_final],
+        s=18,
+        marker="o",
+        linewidths=0.0,
+        alpha=0.92,
+        color=kept_color,
+        label="Kept points (final set)",
+        zorder=3,
+    )
+
+    # --- Final Student-t corridor (final OLS) ---
+    conf = float(getattr(fit, "confidence", 0.95))
+    ax.plot(
+        x_sorted,
+        lower_sorted,
+        linewidth=1.8,
+        color=ols_color,
+        alpha=0.95,
+        label=f"{int(round(conf * 100))}% Student-t corridor (final OLS)",
+        zorder=4,
+    )
+    ax.plot(
+        x_sorted,
+        upper_sorted,
+        linewidth=1.8,
+        color=ols_color,
+        alpha=0.95,
+        zorder=4,
+    )
+
+    # --- Final OLS line ---
+    ax.plot(
+        x_sorted,
+        yhat_sorted,
+        linewidth=2.4,
+        color=ols_color,
+        label="Final OLS line (final set)",
+        zorder=5,
+    )
+
+    # --- Final envelope line (shifted intercept) ---
+    ax.plot(
+        x_sorted,
+        yhat_env_sorted,
+        linewidth=2.8,
+        color=env_color,
+        label="Final envelope line (shifted)",
+        zorder=6,
+    )
+
+    # --- Axes / grid / limits ---
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.grid(True)
+    ax.set_xlabel("x = 1/sin(Sun Elevation) (-)")
+    ax.set_ylabel("ln[Direct Normal Irradiance (W/m²)] (-)")
+
+    # --- Equation box (fixed position): show ONLY log form (OLS + Envelope) ---
+    ax.text(
+        0.02,
+        0.97,
+        eq_ols + "\n" + eq_env,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=12,
+        bbox=dict(
+            boxstyle="round,pad=0.35",
+            facecolor="white",
+            edgecolor="#333333",
+            alpha=0.90,
+        ),
+        zorder=10,
+    )
+
+    subtitle = _build_subtitle(paths, context)
+    _apply_header(
+        fig,
+        title="Final clear-day fit summary (envelope + corridor + rejected points)",
+        subtitle=subtitle,
+    )
+
+    # Legend (include a single entry for rejected points)
+    # Add a dummy handle for rejected points (keep marker consistent with actual points)
+    ax.scatter([], [], s=18, marker="o", color=rej_start, alpha=0.85, label="Rejected points (all iterations)")
+    ax.legend(loc="lower right", frameon=True)
+
+    # --- Save outputs ---
+    paths.iterations_dir.mkdir(parents=True, exist_ok=True)
+
+    out_base = paths.base_dir / f"{paths.prefix}_fit_final_summary.png"
+    out_iter = paths.iterations_dir / f"{paths.prefix}_fit_final_summary.png"
+
+    _finalize_and_save(fig, out_base, dpi=dpi)
+
+    # Copy into iterations folder (filesystem copy is simplest & fast)
+    try:
+        import shutil
+        shutil.copyfile(out_base, out_iter)
+    except Exception:
+        # base file still exists; ignore
+        pass
+
+    return out_base

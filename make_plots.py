@@ -17,13 +17,13 @@ from clear_day_analysis.plots import (
     PlotContext,
     make_plot_paths,
     plot_fit_iterations,
+    plot_fit_final_summary,
     plot_clearness_index_timeseries,
     plot_day_examples_grid,
     plot_annual_energy_by_class,
     plot_cumulative_energy,
     plot_seasonal_energy_by_class,
 )
-
 
 def run_all(
     tmy_csv: Path,
@@ -125,6 +125,9 @@ def run_all(
 
     p1 = plot_fit_iterations(fit, paths, context=context, max_plots=max_iter_plots, dpi=dpi)
     print(f"Wrote {len(p1)} iteration plots in: {paths.iterations_dir}")
+
+    p1b = plot_fit_final_summary(fit, paths, context=context, dpi=dpi)
+    print(f"Wrote: {p1b}")
 
     p2 = plot_clearness_index_timeseries(daily_cls, paths, context=context, dpi=dpi)
     print(f"Wrote: {p2}")
