@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from clear_day_analysis.tmy_reader import read_nsrdb_tmy_csv
+from clear_day_analysis.tmy_reader import read_nsrdb_tmy_csv, read_solargis_tmy60_p50_csv
 from clear_day_analysis import compute_sun_position_columns
 from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
 from clear_day_analysis.day_classification import (
@@ -25,6 +25,25 @@ from clear_day_analysis.plots import (
     plot_seasonal_energy_by_class,
 )
 
+
+def _read_tmy_auto(path: Path):
+    """
+    Read either NSRDB-style or Solargis TMY60_P50 CSV.
+    Detection is based on first header lines.
+    """
+    try:
+        with path.open("r", encoding="utf-8-sig", errors="ignore") as f:
+            head = "".join([f.readline() for _ in range(20)])
+    except Exception:
+        head = ""
+
+    h = head.lower()
+    if ("solargis_tmy60_p50" in h) or ("#typical meteorological year" in h and "#data:" in h):
+        return read_solargis_tmy60_p50_csv(path)
+
+    return read_nsrdb_tmy_csv(path)
+
+
 def run_all(
     tmy_csv: Path,
     *,
@@ -37,7 +56,7 @@ def run_all(
     location_name: str | None = None,
 ) -> None:
     # --- 1) Load TMY ---
-    df, md = read_nsrdb_tmy_csv(str(tmy_csv))
+    df, md = _read_tmy_auto(tmy_csv)
 
     # --- 2) Solar position (computed using UTC timestamps) ---
     df = compute_sun_position_columns(
