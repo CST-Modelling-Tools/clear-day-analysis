@@ -19,6 +19,7 @@ from clear_day_analysis.plots import (
     plot_fit_iterations,
     plot_fit_final_summary,
     plot_clearness_index_timeseries,
+    plot_measured_dni_heatmap,
     plot_day_examples_grid,
     plot_annual_energy_by_class,
     plot_cumulative_energy,
@@ -150,6 +151,17 @@ def run_all(
 
     p2 = plot_clearness_index_timeseries(daily_cls, paths, context=context, dpi=dpi)
     print(f"Wrote: {p2}")
+
+    p2b = plot_measured_dni_heatmap(
+        df,
+        paths,
+        datetime_col="datetime_local",
+        dni_col="DNI",
+        transpose_axes=True,
+        context=context,
+        dpi=dpi,
+    )
+    print(f"Wrote: {p2b}")
 
     p3 = plot_day_examples_grid(
         df,

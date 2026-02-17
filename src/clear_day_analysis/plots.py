@@ -367,6 +367,120 @@ def plot_clearness_index_timeseries(
     return out
 
 
+def plot_measured_dni_heatmap(
+    df: pd.DataFrame,
+    paths: PlotPaths,
+    *,
+    datetime_col: str = "datetime_local",
+    dni_col: str = "DNI",
+    transpose_axes: bool = True,
+    vmin: float = 0.0,
+    vmax: float | None = None,
+    vmax_quantile: float = 0.99,
+    dpi: int = 150,
+    context: PlotContext | None = None,
+) -> Path:
+    """
+    Heatmap of measured DNI by:
+      - X: TMY day number, Y: local hour (default, transpose_axes=True)
+      - or X: local hour, Y: TMY day number (transpose_axes=False)
+    """
+    _apply_theme()
+
+    if datetime_col not in df.columns:
+        raise KeyError(f"Missing datetime column: {datetime_col}")
+    if dni_col not in df.columns:
+        raise KeyError(f"Missing DNI column: {dni_col}")
+
+    t = pd.to_datetime(df[datetime_col], errors="coerce")
+    dni = pd.to_numeric(df[dni_col], errors="coerce")
+
+    tmp = pd.DataFrame({"t": t, "dni": dni}).dropna(subset=["t"])
+    if len(tmp) == 0:
+        raise ValueError("No valid datetime values available for DNI heatmap.")
+
+    # Preserve natural TMY ordering from the file.
+    tmp["date"] = tmp["t"].dt.date
+    day_num = pd.factorize(tmp["date"], sort=False)[0] + 1
+    tmp["day_num"] = day_num
+    tmp["hour"] = tmp["t"].dt.hour + tmp["t"].dt.minute / 60.0
+    tmp["dni"] = pd.to_numeric(tmp["dni"], errors="coerce")
+
+    if transpose_axes:
+        table = tmp.pivot_table(index="hour", columns="day_num", values="dni", aggfunc="mean")
+    else:
+        table = tmp.pivot_table(index="day_num", columns="hour", values="dni", aggfunc="mean")
+
+    z = table.to_numpy(dtype=float)
+    x = table.columns.to_numpy(dtype=float)
+    y = table.index.to_numpy(dtype=float)
+
+    if len(x) == 0 or len(y) == 0:
+        raise ValueError("No data available for DNI heatmap.")
+
+    dx = float(np.median(np.diff(x))) if len(x) > 1 else 1.0
+    dy = float(np.median(np.diff(y))) if len(y) > 1 else 1.0
+    extent = [
+        float(x.min() - dx / 2.0),
+        float(x.max() + dx / 2.0),
+        float(y.min() - dy / 2.0),
+        float(y.max() + dy / 2.0),
+    ]
+
+    fig = plt.figure(figsize=FIGSIZE_16_9)
+    ax = fig.add_subplot(1, 1, 1)
+
+    cmap = plt.get_cmap("YlOrRd").copy()
+    cmap.set_bad(color="#F0F0F0")
+
+    z_masked = np.ma.masked_invalid(z)
+    finite_vals = z_masked.compressed()
+    if finite_vals.size == 0:
+        raise ValueError("No valid DNI values available for DNI heatmap.")
+
+    if vmax is None:
+        q = float(np.clip(vmax_quantile, 0.5, 1.0))
+        vmax_use = float(np.quantile(finite_vals, q))
+        # Avoid degenerate colorbar in extreme edge cases.
+        if not np.isfinite(vmax_use) or vmax_use <= float(vmin):
+            vmax_use = float(np.nanmax(finite_vals))
+    else:
+        vmax_use = float(vmax)
+
+    im = ax.imshow(
+        z_masked,
+        origin="lower",
+        aspect="auto",
+        interpolation="nearest",
+        extent=extent,
+        cmap=cmap,
+        vmin=float(vmin),
+        vmax=vmax_use,
+    )
+
+    cbar = fig.colorbar(im, ax=ax, pad=0.02)
+    cbar.set_label("Measured Direct Normal Irradiance (W/m²)")
+
+    if transpose_axes:
+        ax.set_xlabel("TMY day number (-)")
+        ax.set_ylabel("Hour (Local Standard Time)")
+        ax.set_yticks(np.arange(0, 25, 3))
+        ax.set_ylim(0.0, 24.0)
+    else:
+        ax.set_xlabel("Hour (Local Standard Time)")
+        ax.set_ylabel("TMY day number (-)")
+        ax.set_xticks(np.arange(0, 25, 3))
+        ax.set_xlim(0.0, 24.0)
+    ax.grid(False)
+
+    subtitle = _build_subtitle(paths, context)
+    _apply_header(fig, title="Measured DNI heatmap (day-of-year vs local hour)", subtitle=subtitle)
+
+    out = paths.base_dir / f"{paths.prefix}_measured_dni_heatmap.png"
+    _finalize_and_save(fig, out, dpi=dpi)
+    return out
+
+
 def plot_annual_energy_by_class(
     daily_cls: pd.DataFrame,
     paths: PlotPaths,
