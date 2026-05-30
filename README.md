@@ -106,6 +106,12 @@ python plot_sun_position_reference_days.py path/to/tmy_sun_position_dni_utc.csv 
 
 The reference plot shows daylight azimuth/elevation points for winter solstice, spring equinox, and summer solstice using local-standard TMY time. Marker shape identifies the reference day, marker color shows `DNI` by default, and `--irradiance-col dni_clear_model` can be used for the fitted clear-day reference. Add `--connect-lines` for faint solar-path guide lines.
 
+Example with value labels and fixed color limits:
+
+```bash
+python plot_sun_position_reference_days.py path/to/tmy_sun_position_dni_utc.csv --irradiance-col dni_clear_model --label-values --vmin 0 --vmax 1100
+```
+
 The analysis and export scripts use `read_tmy_csv(..., source="auto")`.
 
 ## Tests

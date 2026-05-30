@@ -65,6 +65,9 @@ def test_plot_sun_position_reference_days_creates_png_with_selected_irradiance(t
         location_name="Test Site",
         irradiance_col="dni_clear_model",
         connect_lines=True,
+        label_values=True,
+        vmin=0.0,
+        vmax=1100.0,
         dpi=80,
     )
 
@@ -82,6 +85,20 @@ def test_plot_sun_position_reference_days_rejects_invalid_irradiance_column(tmp_
             csv_path,
             tmp_path / "reference_days.png",
             irradiance_col="not_a_column",
+            dpi=80,
+        )
+
+
+def test_plot_sun_position_reference_days_rejects_invalid_color_limits(tmp_path: Path):
+    csv_path = tmp_path / "sun_position_export.csv"
+    _write_sun_position_export_fixture(csv_path)
+
+    with pytest.raises(ValueError, match="vmax must be greater than vmin"):
+        plot_sun_position_reference_days(
+            csv_path,
+            tmp_path / "reference_days.png",
+            vmin=1000.0,
+            vmax=100.0,
             dpi=80,
         )
 

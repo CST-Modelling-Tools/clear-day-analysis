@@ -13,6 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MultipleLocator
 
 
 REFERENCE_DAYS = (
@@ -84,6 +85,49 @@ def _nearest_available_date(available_dates: pd.Series, target: pd.Timestamp) ->
     return candidates.iloc[int(idx)].date()
 
 
+def _resolve_color_limits(values: pd.Series, vmin: float | None, vmax: float | None) -> tuple[float, float]:
+    finite_values = pd.to_numeric(values, errors="coerce")
+    finite_values = finite_values[np.isfinite(finite_values)]
+    if finite_values.empty:
+        raise ValueError("No finite irradiance values are available for color scaling.")
+
+    if vmin is not None and not np.isfinite(float(vmin)):
+        raise ValueError("vmin must be finite.")
+    if vmax is not None and not np.isfinite(float(vmax)):
+        raise ValueError("vmax must be finite.")
+    if vmin is not None and vmax is not None and float(vmax) <= float(vmin):
+        raise ValueError("vmax must be greater than vmin.")
+
+    q_low = float(np.nanquantile(finite_values, 0.05))
+    q_high = float(np.nanquantile(finite_values, 0.95))
+    data_min = float(finite_values.min())
+    data_max = float(finite_values.max())
+
+    if vmin is None and vmax is not None:
+        low = 0.0
+    else:
+        low = float(vmin) if vmin is not None else max(0.0, q_low)
+
+    if vmax is None and vmin is not None:
+        high = max(q_high, data_max, low + 1.0)
+    else:
+        high = float(vmax) if vmax is not None else q_high
+
+    if high <= low:
+        low = float(vmin) if vmin is not None else max(0.0, data_min)
+        high = float(vmax) if vmax is not None else data_max
+    if high <= low:
+        if vmax is not None:
+            raise ValueError("vmax must be greater than vmin.")
+        high = low + 1.0
+
+    return low, high
+
+
+def _colorbar_label(irradiance_col: str) -> str:
+    return "DNI (W/m²)" if irradiance_col == "DNI" else "Clear-day DNI model (W/m²)"
+
+
 def select_reference_day_points(
     df: pd.DataFrame,
     *,
@@ -153,6 +197,9 @@ def plot_sun_position_reference_days(
     location_name: str | None = None,
     irradiance_col: str = DEFAULT_IRRADIANCE_COL,
     connect_lines: bool = False,
+    label_values: bool = False,
+    vmin: float | None = None,
+    vmax: float | None = None,
     dpi: int = 200,
 ) -> Path:
     export_csv = Path(export_csv)
@@ -170,12 +217,9 @@ def plot_sun_position_reference_days(
     _apply_report_style()
     fig, ax = plt.subplots(figsize=(13.33, 7.50))
     values = pd.concat([selection.points[irradiance_col] for selection in selections], ignore_index=True)
-    vmin = float(max(0.0, values.min()))
-    vmax = float(values.max())
-    if not np.isfinite(vmax) or vmax <= vmin:
-        vmax = vmin + 1.0
+    color_vmin, color_vmax = _resolve_color_limits(values, vmin, vmax)
 
-    cmap = "viridis"
+    cmap = "plasma"
     scatter_for_colorbar = None
 
     for selection in selections:
@@ -194,8 +238,8 @@ def plot_sun_position_reference_days(
             pts["sun_elevation_deg"],
             c=pts[irradiance_col],
             cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
+            vmin=color_vmin,
+            vmax=color_vmax,
             marker=selection.marker,
             s=72,
             edgecolor="#1A1A1A",
@@ -204,6 +248,18 @@ def plot_sun_position_reference_days(
             zorder=3,
         )
         scatter_for_colorbar = scatter
+        if label_values:
+            for _, row in pts.iterrows():
+                ax.annotate(
+                    f"{row[irradiance_col]:.0f}",
+                    (row["sun_azimuth_deg"], row["sun_elevation_deg"]),
+                    textcoords="offset points",
+                    xytext=(5, 4),
+                    fontsize=8,
+                    color="#333333",
+                    alpha=0.82,
+                    zorder=4,
+                )
 
     title = "Sun Position Reference Days"
     subtitle_base = location_name or export_csv.stem
@@ -214,7 +270,12 @@ def plot_sun_position_reference_days(
     ax.set_xlabel("Sun azimuth angle (deg)")
     ax.set_ylabel("Sun elevation angle (deg)")
     ax.set_ylim(bottom=0.0)
-    ax.grid(True, alpha=0.30, linewidth=0.8)
+    ax.xaxis.set_major_locator(MultipleLocator(30))
+    ax.xaxis.set_minor_locator(MultipleLocator(10))
+    ax.yaxis.set_major_locator(MultipleLocator(10))
+    ax.yaxis.set_minor_locator(MultipleLocator(5))
+    ax.grid(True, which="major", alpha=0.34, linewidth=0.8)
+    ax.grid(True, which="minor", alpha=0.18, linewidth=0.5)
     ax.axhline(0.0, color="#222222", linewidth=0.9, alpha=0.75)
     handles = [
         Line2D(
@@ -231,9 +292,8 @@ def plot_sun_position_reference_days(
     ]
     ax.legend(handles=handles, loc="upper right", frameon=True, facecolor="white", edgecolor="#DDDDDD")
     if scatter_for_colorbar is not None:
-        label = "DNI (W/m2)" if irradiance_col == "DNI" else "Clear-day DNI model (W/m2)"
         cbar = fig.colorbar(scatter_for_colorbar, ax=ax, pad=0.02)
-        cbar.set_label(label)
+        cbar.set_label(_colorbar_label(irradiance_col))
     fig.subplots_adjust(top=0.88, right=0.90)
     fig.savefig(output_png, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
@@ -275,6 +335,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Draw subtle solar-path guide lines behind the irradiance-colored markers.",
     )
+    parser.add_argument(
+        "--label-values",
+        action="store_true",
+        help="Label each daylight point with the rounded irradiance value.",
+    )
+    parser.add_argument("--vmin", type=float, default=None, help="Optional lower colorbar limit.")
+    parser.add_argument("--vmax", type=float, default=None, help="Optional upper colorbar limit.")
     parser.add_argument("--dpi", type=int, default=200, help="PNG output dpi.")
     return parser
 
@@ -288,6 +355,9 @@ def main() -> None:
             location_name=args.location_name,
             irradiance_col=args.irradiance_col,
             connect_lines=args.connect_lines,
+            label_values=args.label_values,
+            vmin=args.vmin,
+            vmax=args.vmax,
             dpi=args.dpi,
         )
     except Exception as exc:
