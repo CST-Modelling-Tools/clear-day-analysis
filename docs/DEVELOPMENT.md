@@ -58,7 +58,7 @@ The tests include:
 - Smoke tests for the C++ sun position bindings
 - Synthetic-data validation of the ASHRAE clear-day fit
 - Daily DNI integral and classification checks
-- TMY reader checks for supported provider formats and datetime normalization
+- TMY reader checks for supported provider formats, datetime normalization, and source timestamp preservation
 
 ## Continuous integration (CI)
 

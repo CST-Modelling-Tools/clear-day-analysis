@@ -45,11 +45,15 @@ Analysis workflows use the repository-standard column:
 df["datetime"]
 ```
 
-This column is timezone-aware UTC and is the timestamp used for solar position, fitting, daily grouping, plotting, and exports unless a workflow explicitly documents otherwise.
+This column is the normalized TMY analysis timestamp. It is timezone-aware UTC and is the timestamp used for solar position, fitting, daily grouping, plotting, and exports unless a workflow explicitly documents otherwise.
 
-TMY providers may preserve source years for selected months. For stable annual analysis, readers may normalize timestamps onto a synthetic TMY calendar. PVGIS files keep the original source-year timestamp in `pvgis_datetime_utc` and expose a normalized, monotonic, non-leap UTC TMY calendar in `datetime`.
+TMY providers may preserve source years for selected months. For stable annual analysis, readers normalize timestamps onto a synthetic TMY calendar. Provider source timestamps are preserved where meaningful:
 
-Do not use source-specific timestamp columns such as `pvgis_datetime_utc` for analysis unless the task is explicitly auditing source data.
+- NSRDB: `nsrdb_datetime_utc`
+- Solargis: `solargis_datetime_utc` when source-year information is available
+- PVGIS: `pvgis_datetime_utc`
+
+`datetime` is monotonic for normal non-leap 8760-row TMY files. For local-time providers such as Solargis, the normalized local TMY calendar is converted to UTC, so UTC boundary rows can fall just outside the synthetic local year. Do not use source-specific timestamp columns for analysis unless the task is explicitly auditing source data.
 
 ## Dependencies
 

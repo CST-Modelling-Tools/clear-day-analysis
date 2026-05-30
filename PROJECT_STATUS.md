@@ -44,15 +44,15 @@ Current expectations:
 - timezone-aware UTC
 - suitable for solar-position calculation
 - suitable for TMY annual ordering and daily grouping
-- monotonic where the reader provides a synthetic TMY calendar
+- monotonic for normal non-leap 8760-row TMY files
 
-PVGIS-specific policy:
+Provider-specific source timestamps are preserved where meaningful:
 
+- `nsrdb_datetime_utc` preserves the parsed NSRDB UTC source timestamp.
+- `solargis_datetime_utc` preserves reconstructed or parsed Solargis source timestamps when source-year information is available.
 - `pvgis_datetime_utc` preserves the original PVGIS source-year UTC timestamp.
-- `datetime` is normalized to a fixed non-leap synthetic TMY year, currently 2001.
-- Normalization preserves month, day, hour, minute, and second while removing source-year discontinuities.
 
-Solargis report-style files already use a stable synthetic base year for day-of-year/time inputs. NSRDB and other Solargis variants currently preserve parsed calendar years; daily classification sorts by month/day to avoid TMY source-year ordering artifacts.
+`datetime` is normalized to a fixed non-leap synthetic TMY calendar, currently based on 2001. Normalization preserves the provider time reference, month, day, hour, minute, and second while removing source-year discontinuities. For local-time formats such as Solargis report-style files, normalized local standard time is converted to UTC; boundary rows can therefore fall just outside the synthetic local year in UTC.
 
 ## Current Priorities
 
@@ -70,6 +70,8 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 - Added PVGIS irradiance normalization: `Gb(n)` to `DNI`, `G(h)` to `GHI`, and `Gd(h)` to `DHI`.
 - Preserved original PVGIS source-year timestamps in `pvgis_datetime_utc`.
 - Normalized PVGIS `datetime` to a monotonic synthetic non-leap calendar.
+- Normalized NSRDB `datetime` and preserved original NSRDB timestamps in `nsrdb_datetime_utc`.
+- Normalized Solargis `datetime` and preserved original Solargis timestamps in `solargis_datetime_utc` when source-year information is available.
 - Updated `quick_run.py` to use generic TMY source selection.
 - Updated `make_plots.py` to use generic TMY source selection.
 - Updated `export_tmy_sun_position_dni.py` to use generic TMY source selection.
@@ -77,28 +79,26 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 - Added synthetic NSRDB reader coverage and generic auto-detection tests for NSRDB, Solargis, and PVGIS.
 - Added PVGIS tests and compact fixture coverage for reader dispatch, timestamp preservation, normalized calendar behavior, 8760-row grouping, and downstream use of normalized `datetime`.
 - Validated the common workflow on one representative local PVGIS 8760-row TMY file; the file was not committed.
-- Validated the common workflow on one representative local NSRDB 8760-row TMY file; the file was not committed. The workflow completed, but the file confirmed that real NSRDB TMY `datetime` can preserve monthly source-year discontinuities and be non-monotonic.
+- Validated the common workflow on one representative local NSRDB 8760-row TMY file; the file was not committed. The file confirmed that NSRDB source timestamps can preserve monthly source-year discontinuities, now retained in `nsrdb_datetime_utc`.
+- Validated the common workflow on one representative local Solargis 8760-row TMY60 P50 file; the file was not committed.
 
 ## Known Technical Debt
 
 - Some workflow orchestration remains in scripts rather than reusable library functions.
 - Metadata fallback behavior is not fully uniform across TMY sources when files omit location fields.
 - Plotting still uses `datetime_local` in some paths; this should be reviewed against the normalized TMY datetime policy before broader PVGIS/Solargis plotting validation.
-- Real NSRDB validation confirmed that NSRDB may need the same normalized-calendar plus original-timestamp policy already implemented for PVGIS.
 
 ## Pending Validation
 
-- Validate Solargis readers against representative real files.
 - Validate PVGIS behavior on more export/database variants; current real-file coverage is one local PVGIS file.
 - Add focused tests for metadata fallback behavior when provider files omit location fields.
-- Confirm whether NSRDB and Solargis should also expose explicit original timestamp columns when source years differ from normalized analysis years.
 - Decide whether daily classification should standardize on UTC `datetime` or local-standard-time grouping in all user-facing workflows.
 - Run CI after commits that affect reader, datetime, or workflow behavior.
 - Validate generated plot and export outputs for NSRDB, Solargis, and PVGIS after reader consolidation.
 
 ## Recommended Next Milestones
 
-1. Decide whether all readers should provide both normalized `datetime` and source-specific original timestamp columns, prioritizing NSRDB because real-file validation confirmed source-year discontinuities.
-2. Validate representative real-file fixtures for Solargis reader behavior.
-3. Add metadata fallback tests across all TMY readers.
+1. Decide whether daily classification and plots should standardize on UTC `datetime` or local-standard-time grouping for local-time providers.
+2. Add metadata fallback tests across all TMY readers.
+3. Validate generated plot and export outputs for NSRDB, Solargis, and PVGIS.
 4. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.

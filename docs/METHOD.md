@@ -28,12 +28,15 @@ The analysis timestamp is always `df["datetime"]`.
 
 It is timezone-aware UTC and is used for solar position, clear-day fitting, daily integrals, classification, plotting, and exports unless a workflow explicitly documents a different grouping column.
 
-TMY files can contain source-year discontinuities because each month may come from a different historical year. Normalizing timestamps avoids scrambled annual ordering and unstable daily grouping.
+TMY files can contain source-year discontinuities because each month may come from a different historical year. Readers normalize the analysis timestamp onto a synthetic non-leap TMY calendar to avoid scrambled annual ordering and unstable daily grouping.
 
-PVGIS-specific behavior:
+Provider source timestamps are preserved where meaningful:
 
-- `pvgis_datetime_utc` preserves the original PVGIS UTC timestamp and source year for auditing.
-- `datetime` is normalized to a monotonic, non-leap synthetic TMY calendar while preserving month, day, hour, minute, and second.
+- `nsrdb_datetime_utc` preserves the parsed NSRDB UTC source timestamp.
+- `solargis_datetime_utc` preserves reconstructed or parsed Solargis source timestamps when source-year information is available.
+- `pvgis_datetime_utc` preserves the original PVGIS UTC source timestamp.
+
+`datetime` is normalized to a monotonic, non-leap synthetic TMY calendar while preserving the provider time reference, month, day, hour, minute, and second. For local-time formats such as Solargis report-style files, the normalized local standard-time calendar is converted to UTC for solar-position calculations; this can produce UTC timestamps just outside the synthetic local year at the boundaries.
 
 Source-specific timestamps are not used for analysis.
 

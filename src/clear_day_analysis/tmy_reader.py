@@ -9,7 +9,8 @@ from typing import Any
 import csv
 
 
-PVGIS_SYNTHETIC_YEAR = 2001
+TMY_SYNTHETIC_YEAR = 2001
+PVGIS_SYNTHETIC_YEAR = TMY_SYNTHETIC_YEAR
 
 
 @dataclass(frozen=True)
@@ -75,13 +76,85 @@ def _parse_utc_offset_hours(value: Any) -> float:
     return sign * (hh + mm / 60.0)
 
 
+def _validate_datetime_complete(values: pd.Series, *, provider: str, column: str) -> pd.Series:
+    dt = pd.to_datetime(values, errors="coerce", utc=True)
+    if dt.isna().any():
+        n_bad = int(dt.isna().sum())
+        raise ValueError(f"Could not parse {n_bad} {provider} {column} values.")
+    return dt
+
+
+def _normalize_tmy_utc_datetime(
+    original: pd.Series,
+    *,
+    provider: str,
+    synthetic_year: int = TMY_SYNTHETIC_YEAR,
+) -> pd.Series:
+    original = pd.to_datetime(original, errors="coerce", utc=True)
+    parts = {
+        "year": pd.Series(synthetic_year, index=original.index),
+        "month": original.dt.month,
+        "day": original.dt.day,
+        "hour": original.dt.hour,
+        "minute": original.dt.minute,
+        "second": original.dt.second,
+    }
+    normalized = pd.to_datetime(parts, errors="coerce", utc=True)
+
+    invalid = normalized.isna() & original.notna()
+    if invalid.any():
+        samples = original.loc[invalid].astype(str).head(3).tolist()
+        raise ValueError(
+            f"Could not normalize {provider} timestamps to a non-leap synthetic TMY calendar. "
+            f"Unsupported dates include: {samples}"
+        )
+
+    return normalized
+
+
+def _normalize_tmy_local_datetime(
+    original_local: pd.Series,
+    *,
+    provider: str,
+    synthetic_year: int = TMY_SYNTHETIC_YEAR,
+) -> pd.Series:
+    original_local = pd.to_datetime(original_local, errors="coerce")
+    parts = {
+        "year": pd.Series(synthetic_year, index=original_local.index),
+        "month": original_local.dt.month,
+        "day": original_local.dt.day,
+        "hour": original_local.dt.hour,
+        "minute": original_local.dt.minute,
+        "second": original_local.dt.second,
+    }
+    normalized = pd.to_datetime(parts, errors="coerce")
+
+    invalid = normalized.isna() & original_local.notna()
+    if invalid.any():
+        samples = original_local.loc[invalid].astype(str).head(3).tolist()
+        raise ValueError(
+            f"Could not normalize {provider} local timestamps to a non-leap synthetic TMY calendar. "
+            f"Unsupported dates include: {samples}"
+        )
+
+    return normalized
+
+
+def _local_standard_time_to_utc(dt_local: pd.Series, utc_offset_h: float) -> pd.Series:
+    return (dt_local - pd.to_timedelta(utc_offset_h, unit="h")).dt.tz_localize("UTC")
+
+
 def read_nsrdb_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
     """
-    Read your NSRDB-style TMY CSV where:
+    Read an NSRDB-style TMY CSV where:
       row 0 = metadata labels
       row 1 = metadata values
       row 2 = data column names
       row 3+ = data
+
+    The parsed source-year UTC timestamp is preserved in nsrdb_datetime_utc.
+    The standard datetime column is normalized to a fixed non-leap synthetic
+    TMY calendar for analysis.
     """
     path = Path(path)
 
@@ -114,8 +187,9 @@ def read_nsrdb_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
     for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce") if c not in ("Cloud Type",) else df[c]
 
-    # build UTC datetime from Year/Month/Day/Hour/Minute (your file uses UTC)
-    df["datetime"] = pd.to_datetime(
+    # Preserve the NSRDB source-year timestamp and expose a normalized TMY
+    # calendar for downstream analysis.
+    df["nsrdb_datetime_utc"] = pd.to_datetime(
         dict(
             year=df["Year"].astype(int),
             month=df["Month"].astype(int),
@@ -123,8 +197,17 @@ def read_nsrdb_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
             hour=df["Hour"].astype(int),
             minute=df["Minute"].astype(int),
         ),
+        errors="coerce",
         utc=True,
     )
+    df["nsrdb_datetime_utc"] = _validate_datetime_complete(
+        df["nsrdb_datetime_utc"],
+        provider="NSRDB",
+        column="datetime",
+    )
+    df["datetime"] = _normalize_tmy_utc_datetime(df["nsrdb_datetime_utc"], provider="NSRDB")
+    if not df["datetime"].is_monotonic_increasing:
+        raise ValueError("NSRDB normalized TMY datetime is not monotonic increasing.")
 
     return df, md
 
@@ -164,25 +247,7 @@ def _parse_pvgis_utc_datetime(values: pd.Series) -> pd.Series:
 
 
 def _normalize_pvgis_tmy_datetime(original: pd.Series, *, synthetic_year: int = PVGIS_SYNTHETIC_YEAR) -> pd.Series:
-    parts = {
-        "year": pd.Series(synthetic_year, index=original.index),
-        "month": original.dt.month,
-        "day": original.dt.day,
-        "hour": original.dt.hour,
-        "minute": original.dt.minute,
-        "second": original.dt.second,
-    }
-    normalized = pd.to_datetime(parts, errors="coerce", utc=True)
-
-    invalid = normalized.isna() & original.notna()
-    if invalid.any():
-        samples = original.loc[invalid].astype(str).head(3).tolist()
-        raise ValueError(
-            "Could not normalize PVGIS timestamps to a non-leap synthetic TMY calendar. "
-            f"Unsupported dates include: {samples}"
-        )
-
-    return normalized
+    return _normalize_tmy_utc_datetime(original, provider="PVGIS", synthetic_year=synthetic_year)
 
 
 def _metadata_value(meta_map: dict[str, str], needles: list[str]) -> str | None:
@@ -210,6 +275,36 @@ def _metadata_labeled_float(meta_map: dict[str, str], lines: list[str], labels: 
         if m:
             return float(m.group(1))
     return float("nan")
+
+
+def _parse_solargis_selected_years(value: Any) -> dict[int, int]:
+    if value is None:
+        return {}
+    years: dict[int, int] = {}
+    for month, year in re.findall(r"\b(\d{1,2})\s*:\s*(\d{4})\b", str(value)):
+        month_i = int(month)
+        if 1 <= month_i <= 12:
+            years[month_i] = int(year)
+    return years
+
+
+def _solargis_source_local_from_selected_years(dt_local: pd.Series, selected_years: dict[int, int]) -> pd.Series:
+    source_year = dt_local.dt.month.map(selected_years)
+    if source_year.isna().any():
+        missing = sorted(int(m) for m in dt_local.loc[source_year.isna()].dt.month.dropna().unique())
+        raise ValueError(f"Solargis selected-years metadata is missing month(s): {missing}")
+
+    return pd.to_datetime(
+        {
+            "year": source_year.astype(int),
+            "month": dt_local.dt.month,
+            "day": dt_local.dt.day,
+            "hour": dt_local.dt.hour,
+            "minute": dt_local.dt.minute,
+            "second": dt_local.dt.second,
+        },
+        errors="coerce",
+    )
 
 
 def read_pvgis_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
@@ -408,6 +503,11 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
       - metadata block before tabular data
       - comma or semicolon delimiter
       - datetime as [Year, Month, Day, Hour, Minute] OR [Date, Time]
+
+    Parsed or reconstructed source-year timestamps are preserved in
+    solargis_datetime_utc when source dates are meaningful. The standard
+    datetime column is normalized to a fixed non-leap synthetic TMY calendar
+    in the file's time reference and converted to UTC for analysis.
     """
     path = Path(path)
 
@@ -473,20 +573,21 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
             if conv.notna().any():
                 df[c] = conv
 
-        # Build datetime from Day-of-year + Time, using a stable non-leap base year.
+        # Build datetime from Day-of-year + Time, using the normalized non-leap
+        # TMY calendar in the file's local standard time reference.
         norm_cols = {_normalize_colname(c): c for c in df.columns}
         if "day" not in norm_cols or "time" not in norm_cols:
             raise ValueError("Solargis report-style CSV must include Day and Time columns.")
 
         day = pd.to_numeric(df[norm_cols["day"]], errors="coerce").astype("Int64")
-        day_max = int(day.max()) if day.notna().any() else 365
-        base_year = 2000 if day_max >= 366 else 2001
+        if day.isna().any() or (day < 1).any() or (day > 365).any():
+            raise ValueError("Solargis report-style Day values must fit a non-leap synthetic TMY calendar.")
 
         tparts = df[norm_cols["time"]].astype(str).str.split(":", n=1, expand=True)
         hour = pd.to_numeric(tparts[0], errors="coerce").fillna(0.0)
         minute = pd.to_numeric(tparts[1] if tparts.shape[1] > 1 else 0, errors="coerce").fillna(0.0)
 
-        base_date = pd.Timestamp(year=base_year, month=1, day=1)
+        base_date = pd.Timestamp(year=TMY_SYNTHETIC_YEAR, month=1, day=1)
         dt_local = (
             base_date
             + pd.to_timedelta(day.fillna(1).astype(int) - 1, unit="D")
@@ -494,7 +595,19 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
             + pd.to_timedelta(minute, unit="m")
         )
 
-        df["datetime"] = (dt_local - pd.to_timedelta(utc_offset_h, unit="h")).dt.tz_localize("UTC")
+        selected_years = _parse_solargis_selected_years(meta_map.get("tmy created from selected years"))
+        if selected_years:
+            source_local = _solargis_source_local_from_selected_years(dt_local, selected_years)
+            df["solargis_datetime_utc"] = _local_standard_time_to_utc(source_local, utc_offset_h)
+            df["solargis_datetime_utc"] = _validate_datetime_complete(
+                df["solargis_datetime_utc"],
+                provider="Solargis",
+                column="source datetime",
+            )
+
+        df["datetime"] = _local_standard_time_to_utc(dt_local, utc_offset_h)
+        if not df["datetime"].is_monotonic_increasing:
+            raise ValueError("Solargis normalized TMY datetime is not monotonic increasing.")
 
         latitude = _extract_first_float(meta_map.get("latitude") or meta_map.get("lat"))
         longitude = _extract_first_float(meta_map.get("longitude") or meta_map.get("lon") or meta_map.get("lng"))
@@ -591,7 +704,7 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
 
     normalized_cols = {_normalize_colname(c): c for c in df.columns}
 
-    # Build timezone-aware UTC datetime expected by downstream code.
+    # Build source and normalized timezone-aware UTC datetimes expected by downstream code.
     tz_val = (
         meta_map.get("local time zone")
         or meta_map.get("time zone")
@@ -615,7 +728,7 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
             errors="coerce",
         ).fillna(0.0)
 
-        base_date = pd.to_datetime(
+        dt_local = pd.to_datetime(
             {
                 "year": year,
                 "month": month,
@@ -623,7 +736,7 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
             },
             errors="coerce",
         )
-        dt_local = base_date + pd.to_timedelta(hour, unit="h") + pd.to_timedelta(minute, unit="m")
+        dt_local = dt_local + pd.to_timedelta(hour, unit="h") + pd.to_timedelta(minute, unit="m")
     elif "date" in normalized_cols:
         date_col = df[normalized_cols["date"]].astype(str)
         if "time" in normalized_cols:
@@ -633,8 +746,23 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
     else:
         raise ValueError("Could not build datetime: expected Year/Month/Day[...] or Date[/Time] columns.")
 
-    # Solargis files are typically in local standard time; convert to UTC.
-    df["datetime"] = (dt_local - pd.to_timedelta(utc_offset_h, unit="h")).dt.tz_localize("UTC")
+    if dt_local.isna().any():
+        n_bad = int(dt_local.isna().sum())
+        raise ValueError(f"Could not parse {n_bad} Solargis local datetime values.")
+
+    # Solargis files are typically in local standard time. Preserve parsed
+    # source-year timestamps, then normalize the analysis calendar.
+    df["solargis_datetime_utc"] = _local_standard_time_to_utc(dt_local, utc_offset_h)
+    df["solargis_datetime_utc"] = _validate_datetime_complete(
+        df["solargis_datetime_utc"],
+        provider="Solargis",
+        column="source datetime",
+    )
+
+    dt_local_normalized = _normalize_tmy_local_datetime(dt_local, provider="Solargis")
+    df["datetime"] = _local_standard_time_to_utc(dt_local_normalized, utc_offset_h)
+    if not df["datetime"].is_monotonic_increasing:
+        raise ValueError("Solargis normalized TMY datetime is not monotonic increasing.")
 
     latitude = _extract_first_float(
         meta_map.get("latitude")
