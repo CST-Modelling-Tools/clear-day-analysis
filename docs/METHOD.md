@@ -1,112 +1,147 @@
-# Method: Clear-day envelope and day classification
+# Method: Clear-Day Envelope And Day Classification
 
 ## Inputs
 
-- NSRDB Typical Meteorological Year (TMY) CSV with DNI measurements.
-- Solar position (sun elevation) computed for each timestamp.
+The workflow accepts supported Typical Meteorological Year (TMY) CSV files with direct normal irradiance (DNI) measurements.
 
-Only points where the sun is sufficiently above the horizon are used to avoid low-angle effects. By default:
-- Minimum solar elevation: 5°.
+Currently supported sources are:
 
-## Solar geometry
+- NSRDB TMY CSV
+- Solargis TMY60 P50 CSV
+- PVGIS 5.x TMY CSV
 
-For each timestamp t, the solar elevation angle α(t) is computed using a C++ implementation of a PSA-based sun position algorithm (wrapped with pybind11).
+TMY ingestion is centralized in `src/clear_day_analysis/tmy_reader.py`. Source-specific readers normalize provider formats into a common DataFrame and metadata schema. New workflows should use:
 
-We define:
+```python
+read_tmy_csv(path, source="auto")
+```
 
-- sinα(t) = sin(α(t))
-- x(t) = 1 / sinα(t)
+The normalized DataFrame is expected to include at least:
 
-The variable x(t) is used in the linearized ASHRAE clear-day model.
+- `datetime`: repository-standard UTC analysis timestamp
+- `DNI`: direct normal irradiance
+- preferably `GHI`: global horizontal irradiance
 
-## ASHRAE clear-day DNI model
+## Datetime Convention
 
-The ASHRAE formulation for direct normal irradiance (DNI) under clear-sky conditions is assumed to be:
+The analysis timestamp is always `df["datetime"]`.
 
-DNI_clear(t) = E0 · exp( −β / sinα(t) )
+It is timezone-aware UTC and is used for solar position, clear-day fitting, daily integrals, classification, plotting, and exports unless a workflow explicitly documents a different grouping column.
 
-Taking the natural logarithm gives a linear relationship:
+TMY files can contain source-year discontinuities because each month may come from a different historical year. Normalizing timestamps avoids scrambled annual ordering and unstable daily grouping.
 
-ln(DNI(t)) = a + b · x(t)
+PVGIS-specific behavior:
+
+- `pvgis_datetime_utc` preserves the original PVGIS UTC timestamp and source year for auditing.
+- `datetime` is normalized to a monotonic, non-leap synthetic TMY calendar while preserving month, day, hour, minute, and second.
+
+Source-specific timestamps are not used for analysis.
+
+## Workflow
+
+The standard workflow is:
+
+1. Read TMY data.
+2. Compute solar position.
+3. Fit the clear-day envelope.
+4. Build the clear-day DNI model.
+5. Compute daily DNI integral ratios.
+6. Classify days.
+7. Generate plots or exports.
+
+## Solar Geometry
+
+For each timestamp `t`, the solar elevation angle `alpha(t)` is computed using a C++ implementation of a PSA-based sun position algorithm wrapped with pybind11.
+
+Definitions:
+
+- `sin_alpha(t) = sin(alpha(t))`
+- `x(t) = 1 / sin_alpha(t)`
+
+The variable `x(t)` is used in the linearized ASHRAE clear-day model.
+
+Only points where the sun is sufficiently above the horizon are used to avoid low-angle effects. The default minimum solar elevation is 5 degrees.
+
+## ASHRAE Clear-Day DNI Model
+
+The ASHRAE formulation for direct normal irradiance under clear-sky conditions is:
+
+```text
+DNI_clear(t) = E0 * exp(-beta / sin_alpha(t))
+```
+
+Taking the natural logarithm gives:
+
+```text
+ln(DNI(t)) = a + b * x(t)
+```
 
 where:
 
-- a = ln(E0)
-- b = −β
-- x(t) = 1 / sinα(t)
+- `a = ln(E0)`
+- `b = -beta`
+- `x(t) = 1 / sin_alpha(t)`
 
-This allows estimation of E0 and β via ordinary least squares (OLS) in log-space.
+This allows estimation of `E0` and `beta` via ordinary least squares in log-space.
 
-## Iterative fitting with Student-t corridor
+## Iterative Fitting With Student-t Corridor
 
-The clear-day parameters are estimated using all valid DNI points of the year (not day-by-day), through an iterative procedure:
+The clear-day parameters are estimated using all valid DNI points of the year, not day-by-day.
 
-1. Initial filtering:
-   - DNI > 0
-   - solar elevation ≥ α_min (default 5°)
+The iterative procedure is:
 
-2. OLS fit in log-space:
-   ln(DNI) = a + b · x
+1. Filter to `DNI > 0` and solar elevation greater than or equal to the minimum elevation.
+2. Fit `ln(DNI) = a + b * x` in log-space.
+3. Compute a Student-t prediction corridor.
+4. Reject outliers.
+5. Repeat until convergence.
 
-3. Computation of a Student-t prediction interval ("error corridor"):
+The default outlier mode removes points below the lower corridor because clouds reduce DNI. A two-sided mode is also available.
 
-   ŷ(x) ± t_{α/2,ν} · s · √(1 + 1/n + (x − x̄)² / Sxx)
+Convergence is determined by negligible change in fitted parameters and/or very few new outliers removed in an iteration.
 
-   where:
-   - s is the residual standard deviation
-   - ν = n − 2 degrees of freedom
+## Envelope Enforcement
 
-4. Outlier rejection:
-   - Default mode ("lower"): remove points below the lower corridor
-     (physically, clouds reduce DNI)
-   - Optional mode ("two_sided"): remove points outside the corridor
-
-5. Repeat steps 2–4 until convergence.
-
-Convergence is determined by:
-- negligible change in fitted parameters, and/or
-- very few new outliers removed in an iteration.
-
-## Envelope enforcement
-
-The iterative OLS + corridor procedure yields a robust clear-sky fit, but not necessarily a strict envelope.
+The iterative OLS plus corridor procedure yields a robust clear-sky fit, but not necessarily a strict envelope.
 
 To enforce envelope behavior, a final upward parallel shift is applied in log-space:
 
-- Residuals: r(t) = ln(DNI(t)) − (a + b · x(t))
-- Compute a high quantile (e.g. 98%) of r(t)
-- Apply a shift:
+1. Compute residuals from the fitted line.
+2. Compute a high residual quantile, such as 98%.
+3. Apply a non-negative upward shift to `a`.
 
-  a_env = a + max(0, Δa)
+This increases `E0` by a multiplicative factor while keeping `beta` unchanged.
 
-This increases E0 by a factor exp(Δa) while keeping β unchanged.
+## Daily DNI Energy Integrals
 
-## Daily DNI energy integrals
+For each day `d`, energy-like integrals are computed:
 
-For each day d, energy-like integrals are computed:
+```text
+H_dni(d) = sum(DNI(t) * dt)
+H_clear(d) = sum(DNI_clear(t) * dt)
+```
 
-H_dni(d) = Σ DNI(t) · Δt
-H_clear(d) = Σ DNI_clear(t) · Δt
+where `dt` is the timestep in hours, inferred from the data.
 
-where Δt is the timestep (in hours), inferred from the data.
+Only points consistent with the clear-day model filtering are used.
 
-Only points consistent with the clear-day model filtering (elevation ≥ α_min) are used.
+The daily ratio is:
 
-The daily ratio is defined as:
-
+```text
 R(d) = H_dni(d) / H_clear(d)
+```
 
-## Day classification
+## Day Classification
 
-Each day is classified based on the ratio R(d) using fixed physical thresholds:
+Each day is classified from the daily ratio `R(d)` using fixed physical thresholds:
 
-- extremely_clear: R ≥ 0.90
-- clear: 0.70 ≤ R < 0.90
-- cloudy: 0.40 ≤ R < 0.70
-- extremely_cloudy: R < 0.40
+- `extremely_clear`: `R >= 0.90`
+- `clear`: `0.70 <= R < 0.90`
+- `cloudy`: `0.40 <= R < 0.70`
+- `extremely_cloudy`: `R < 0.40`
 
-These thresholds are intentionally location-independent, as they compare measured DNI to a clear-day reference under identical solar geometry.
+These thresholds are intentionally location-independent because they compare measured DNI to a clear-day reference under identical solar geometry.
 
-## TMY ordering note
+## TMY Ordering Note
 
-In NSRDB TMY files, different months may originate from different historical years. For presentation purposes, daily results are ordered by (month, day) rather than by full calendar date.
+Daily outputs are ordered by natural TMY month/day ordering where needed. This avoids provider source-year artifacts and keeps results interpretable as one synthetic annual TMY sequence.

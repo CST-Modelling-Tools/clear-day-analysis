@@ -60,8 +60,8 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 - Use `read_tmy_csv()` as the preferred TMY entry point.
 - Keep analysis algorithms source-agnostic after ingestion.
 - Maintain the normalized DataFrame and metadata schema across TMY sources.
-- Validate datetime changes for timezone awareness, monotonicity, daily grouping, and downstream classification.
-- Bring docs and scripts in line with current multi-source TMY support.
+- Expand cross-provider reader validation, especially metadata fallback behavior and real-file coverage.
+- Validate datetime behavior for timezone awareness, monotonicity, daily grouping, and downstream classification.
 
 ## Recent Completed Milestones
 
@@ -73,11 +73,12 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 - Updated `quick_run.py` to use generic TMY source selection.
 - Updated `make_plots.py` to use generic TMY source selection.
 - Updated `export_tmy_sun_position_dni.py` to use generic TMY source selection.
+- Updated README and method documentation for multi-source TMY support, generic ingestion, and normalized datetime policy.
+- Added synthetic NSRDB reader coverage and generic auto-detection tests for NSRDB, Solargis, and PVGIS.
 - Added PVGIS tests and compact fixture coverage for reader dispatch, timestamp preservation, normalized calendar behavior, 8760-row grouping, and downstream use of normalized `datetime`.
 
 ## Known Technical Debt
 
-- `README.md` and `docs/METHOD.md` still lag behind current multi-source support and describe the project mostly as NSRDB-based.
 - Some workflow orchestration remains in scripts rather than reusable library functions.
 - Metadata fallback behavior is not fully uniform across TMY sources when files omit location fields.
 - Plotting still uses `datetime_local` in some paths; this should be reviewed against the normalized TMY datetime policy before broader PVGIS/Solargis plotting validation.
@@ -86,6 +87,7 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 
 - Validate NSRDB, Solargis, and PVGIS readers against representative real files for each provider.
 - Validate PVGIS behavior on more export/database variants.
+- Add focused tests for metadata fallback behavior when provider files omit location fields.
 - Confirm whether NSRDB and Solargis should also expose explicit original timestamp columns when source years differ from normalized analysis years.
 - Decide whether daily classification should standardize on UTC `datetime` or local-standard-time grouping in all user-facing workflows.
 - Run CI after commits that affect reader, datetime, or workflow behavior.
@@ -93,7 +95,7 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 
 ## Recommended Next Milestones
 
-1. Update README and method docs for NSRDB, Solargis, PVGIS, and normalized datetime conventions.
-2. Add or confirm representative fixtures/tests for NSRDB reader behavior.
-3. Decide whether all readers should provide both normalized `datetime` and source-specific original timestamp columns.
+1. Validate representative real-file fixtures for NSRDB, Solargis, and PVGIS reader behavior.
+2. Decide whether all readers should provide both normalized `datetime` and source-specific original timestamp columns.
+3. Add metadata fallback tests across all TMY readers.
 4. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.

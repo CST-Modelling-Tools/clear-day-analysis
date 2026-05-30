@@ -111,9 +111,10 @@ def daily_dni_integral_ratio(
       - If alpha_min_deg is provided: elevation >= alpha_min_deg
 
     Ordering (TMY note):
-      NSRDB TMY uses real calendar years that may vary by month. If pandas sorts by the
-      full date key (YYYY-MM-DD), the resulting daily table can appear "scrambled".
-      By default, we return days sorted by (month, day), which is the natural TMY order.
+      Some TMY sources preserve source years that may vary by month. If pandas sorts by
+      the full date key (YYYY-MM-DD), the resulting daily table can appear "scrambled".
+      Readers that expose a normalized synthetic calendar avoid this, but by default we
+      still return days sorted by (month, day), which is the natural TMY order.
 
     Returns a DataFrame with columns:
       date, H_dni, H_dni_clear, ratio, n_points, dt_hours
@@ -143,7 +144,7 @@ def daily_dni_integral_ratio(
     tmp["dni_clear_w"] = dni_clear[use] * dt_hours
 
     # IMPORTANT: sort=False preserves first-appearance order of dates in the input.
-    # This avoids pandas sorting by actual year (which can "scramble" TMY outputs).
+    # This avoids pandas sorting by source year for TMY inputs that preserve it.
     daily = (
         tmp.groupby("date", as_index=False, sort=False)
         .agg(H_dni=("dni_w", "sum"), H_dni_clear=("dni_clear_w", "sum"), n_points=("dni_w", "size"))

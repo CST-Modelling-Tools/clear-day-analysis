@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from clear_day_analysis.tmy_reader import read_solargis_tmy60_p50_csv
+from clear_day_analysis.tmy_reader import read_solargis_tmy60_p50_csv, read_tmy_csv
 
 
 def test_read_solargis_tmy60_p50_csv_basic(tmp_path: Path):
@@ -35,6 +35,28 @@ Year,Month,Day,Hour,Minute,DNI,GHI
     assert abs(md.latitude - 33.01) < 1e-9
     assert abs(md.longitude - (-113.38)) < 1e-9
     assert abs(md.local_time_zone - (-7.0)) < 1e-9
+
+
+def test_read_tmy_csv_auto_detects_solargis(tmp_path: Path):
+    csv_text = """Source,Solargis_TMY60_P50
+Site name,Hyder AZ
+Latitude,33.01
+Longitude,-113.38
+Elevation,350
+Local Time Zone,UTC-7
+Year,Month,Day,Hour,Minute,DNI,GHI
+2020,1,1,12,0,800,500
+2020,1,1,13,0,850,540
+"""
+    p = tmp_path / "solargis.csv"
+    p.write_text(csv_text, encoding="utf-8")
+
+    df, md = read_tmy_csv(p, source="auto")
+
+    assert len(df) == 2
+    assert df["DNI"].iloc[0] == 800
+    assert str(df["datetime"].iloc[0]) == "2020-01-01 19:00:00+00:00"
+    assert md.source == "Solargis_TMY60_P50"
 
 
 def test_read_solargis_tmy60_p50_report_style(tmp_path: Path):
