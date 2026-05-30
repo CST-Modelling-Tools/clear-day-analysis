@@ -21,7 +21,7 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
 
     df, md = read_tmy_csv(input_csv, source="auto")
 
-    missing = [col for col in ("datetime", "DNI") if col not in df.columns]
+    missing = [col for col in ("datetime", "tmy_datetime_local", "DNI") if col not in df.columns]
     if missing:
         raise ValueError(f"Parsed TMY CSV is missing required column(s): {', '.join(missing)}")
 
@@ -34,14 +34,20 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
     )
 
     datetime_utc = pd.to_datetime(df["datetime"], utc=True)
+    tmy_datetime_local = pd.to_datetime(df["tmy_datetime_local"])
     out = pd.DataFrame(
         {
+            "datetime": datetime_utc.astype(str),
+            "tmy_datetime_local": tmy_datetime_local.dt.strftime("%Y-%m-%d %H:%M:%S"),
             "Year": datetime_utc.dt.year,
             "Month": datetime_utc.dt.month,
             "Day": datetime_utc.dt.day,
             "Hour": datetime_utc.dt.hour,
             "Minute": datetime_utc.dt.minute,
             "Second": datetime_utc.dt.second,
+            "sun_azimuth_deg": df["sun_azimuth_deg"],
+            "sun_elevation_deg": df["sun_elevation_deg"],
+            "DNI": df["DNI"],
             "Sun Azimuth (deg)": df["sun_azimuth_deg"],
             "Sun Elevation (deg)": df["sun_elevation_deg"],
             "DNI (W/m2)": df["DNI"],
@@ -57,7 +63,7 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Export normalized UTC time, sun position, and DNI columns from a TMY CSV.",
+        description="Export normalized UTC/local TMY time, sun position, and DNI columns from a TMY CSV.",
     )
     parser.add_argument("input_csv", type=Path, help="Path to NSRDB, Solargis, or PVGIS TMY CSV")
     parser.add_argument(

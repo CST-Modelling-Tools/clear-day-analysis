@@ -109,7 +109,7 @@ Generate clear-day fit and classification plots:
 python make_plots.py path/to/tmy.csv
 ```
 
-Export normalized UTC time, sun position, and DNI:
+Export normalized UTC time, normalized local TMY time, sun position, and DNI:
 
 ```bash
 python export_tmy_sun_position_dni.py path/to/tmy.csv

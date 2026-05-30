@@ -91,6 +91,8 @@ Provider-specific source timestamps are preserved where meaningful:
 - Validated the common workflow on one representative local PVGIS 8760-row TMY file; the file was not committed.
 - Validated the common workflow on one representative local NSRDB 8760-row TMY file; the file was not committed. The file confirmed that NSRDB source timestamps can preserve monthly source-year discontinuities, now retained in `nsrdb_datetime_utc`.
 - Validated the common workflow on one representative local Solargis 8760-row TMY60 P50 file; the file was not committed.
+- Validated generated plots and sun-position/DNI exports on representative local real files for NSRDB UTC-7, Solargis UTC+4, and PVGIS UTC. Validation copies and generated outputs were not committed.
+- Updated sun-position/DNI exports to include both `datetime` and `tmy_datetime_local` alongside canonical sun-position and DNI columns.
 
 ## Known Technical Debt
 
@@ -102,10 +104,8 @@ Provider-specific source timestamps are preserved where meaningful:
 - Validate PVGIS behavior on more export/database variants; current real-file coverage is one local PVGIS file.
 - Add focused tests for metadata fallback behavior when provider files omit location fields.
 - Run CI after commits that affect reader, datetime, or workflow behavior.
-- Validate generated plot and export outputs for NSRDB, Solargis, and PVGIS after reader consolidation.
 
 ## Recommended Next Milestones
 
 1. Add metadata fallback tests across all TMY readers.
-2. Validate generated plot and export outputs for NSRDB, Solargis, and PVGIS.
-3. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.
+2. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.
