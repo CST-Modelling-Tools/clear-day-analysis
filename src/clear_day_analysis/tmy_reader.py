@@ -144,6 +144,57 @@ def _local_standard_time_to_utc(dt_local: pd.Series, utc_offset_h: float) -> pd.
     return (dt_local - pd.to_timedelta(utc_offset_h, unit="h")).dt.tz_localize("UTC")
 
 
+def _normalized_local_tmy_datetime_from_utc(
+    datetime_utc: pd.Series,
+    local_time_zone: float,
+    *,
+    provider: str,
+    synthetic_year: int = TMY_SYNTHETIC_YEAR,
+) -> pd.Series:
+    if not np.isfinite(float(local_time_zone)):
+        raise ValueError(f"{provider} local_time_zone must be finite to build tmy_datetime_local.")
+
+    dt_utc = _validate_datetime_complete(datetime_utc, provider=provider, column="datetime")
+    local_standard = (
+        dt_utc.dt.tz_convert("UTC").dt.tz_localize(None)
+        + pd.to_timedelta(float(local_time_zone), unit="h")
+    )
+    return _normalize_tmy_local_datetime(
+        local_standard,
+        provider=f"{provider} local TMY",
+        synthetic_year=synthetic_year,
+    )
+
+
+def _add_tmy_datetime_local(df: pd.DataFrame, md: TMYMetadata) -> pd.DataFrame:
+    """
+    Add normalized local-standard TMY timestamps for daily grouping.
+
+    The column is timezone-naive on purpose: it represents local standard wall
+    time in the synthetic TMY calendar, not a UTC instant.
+    """
+    if "datetime" not in df.columns:
+        raise KeyError("Missing column: datetime")
+
+    local = _normalized_local_tmy_datetime_from_utc(
+        df["datetime"],
+        md.local_time_zone,
+        provider=md.source or "TMY",
+    )
+
+    if len(local) == 8760:
+        date_counts = local.dt.date.value_counts()
+        if len(date_counts) != 365 or not (date_counts == 24).all():
+            raise ValueError(
+                "Normalized local TMY datetime should contain 365 dates with 24 records "
+                f"per date for an 8760-row hourly file; got {len(date_counts)} dates "
+                f"with counts from {int(date_counts.min())} to {int(date_counts.max())}."
+            )
+
+    df["tmy_datetime_local"] = local
+    return df
+
+
 def read_nsrdb_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
     """
     Read an NSRDB-style TMY CSV where:
@@ -154,7 +205,8 @@ def read_nsrdb_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
 
     The parsed source-year UTC timestamp is preserved in nsrdb_datetime_utc.
     The standard datetime column is normalized to a fixed non-leap synthetic
-    TMY calendar for analysis.
+    TMY calendar for UTC analysis. The tmy_datetime_local column is added for
+    local-standard daily grouping.
     """
     path = Path(path)
 
@@ -208,6 +260,8 @@ def read_nsrdb_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
     df["datetime"] = _normalize_tmy_utc_datetime(df["nsrdb_datetime_utc"], provider="NSRDB")
     if not df["datetime"].is_monotonic_increasing:
         raise ValueError("NSRDB normalized TMY datetime is not monotonic increasing.")
+
+    df = _add_tmy_datetime_local(df, md)
 
     return df, md
 
@@ -318,7 +372,8 @@ def read_pvgis_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
 
     The original PVGIS source-year timestamp is preserved in
     pvgis_datetime_utc. The standard datetime column is normalized to a fixed
-    non-leap synthetic TMY year so downstream daily grouping is monotonic.
+    non-leap synthetic TMY year for UTC analysis, and tmy_datetime_local is
+    added for local-standard daily grouping.
     """
     path = Path(path)
 
@@ -492,6 +547,8 @@ def read_pvgis_tmy_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMetadata]:
         local_time_zone=0.0,
     )
 
+    df = _add_tmy_datetime_local(df, md)
+
     return df, md
 
 
@@ -507,7 +564,8 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
     Parsed or reconstructed source-year timestamps are preserved in
     solargis_datetime_utc when source dates are meaningful. The standard
     datetime column is normalized to a fixed non-leap synthetic TMY calendar
-    in the file's time reference and converted to UTC for analysis.
+    in the file's time reference and converted to UTC for analysis. The
+    tmy_datetime_local column is added for local-standard daily grouping.
     """
     path = Path(path)
 
@@ -625,6 +683,7 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
             time_zone=float(utc_offset_h),
             local_time_zone=float(utc_offset_h),
         )
+        df = _add_tmy_datetime_local(df, md)
         return df, md
 
     # Parse once as raw rows to recover metadata block and detect data header row.
@@ -796,6 +855,8 @@ def read_solargis_tmy60_p50_csv(path: str | Path) -> tuple[pd.DataFrame, TMYMeta
         time_zone=float(utc_offset_h),
         local_time_zone=float(utc_offset_h),
     )
+
+    df = _add_tmy_datetime_local(df, md)
 
     return df, md
 

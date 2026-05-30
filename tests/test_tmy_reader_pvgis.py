@@ -16,6 +16,7 @@ def test_read_pvgis_tmy_csv_basic():
 
     assert len(df) == 3
     assert "datetime" in df.columns
+    assert "tmy_datetime_local" in df.columns
     assert "pvgis_datetime_utc" in df.columns
     assert "DNI" in df.columns
     assert "GHI" in df.columns
@@ -25,6 +26,8 @@ def test_read_pvgis_tmy_csv_basic():
     assert df["datetime"].iloc[0].utcoffset().total_seconds() == 0
     assert str(df["pvgis_datetime_utc"].iloc[0]) == "2020-01-01 00:00:00+00:00"
     assert str(df["datetime"].iloc[0]) == "2001-01-01 00:00:00+00:00"
+    assert str(df["tmy_datetime_local"].iloc[0]) == "2001-01-01 00:00:00"
+    assert df["tmy_datetime_local"].dt.tz is None
 
     assert df["DNI"].iloc[2] == 810
     assert df["GHI"].iloc[2] == 650
@@ -71,6 +74,7 @@ time(UTC),T2m,RH,G(h),Gb(n),Gd(h),IR(h),WS10m,WD10m,SP
     assert df["datetime"].dt.year.tolist() == [SYNTHETIC_YEAR] * 3
     assert df["datetime"].dt.month.tolist() == [1, 2, 3]
     assert df["datetime"].dt.day.tolist() == [31, 1, 1]
+    assert df["tmy_datetime_local"].dt.year.tolist() == [SYNTHETIC_YEAR] * 3
     assert df["datetime"].is_monotonic_increasing
 
 
@@ -120,6 +124,10 @@ def test_pvgis_8760_normalized_calendar_supports_downstream_grouping(tmp_path: P
     assert df["datetime"].dt.year.unique().tolist() == [SYNTHETIC_YEAR]
     assert df["datetime"].is_monotonic_increasing
     assert df["datetime"].dt.date.nunique() == 365
+    assert df["tmy_datetime_local"].dt.tz is None
+    assert df["tmy_datetime_local"].dt.year.unique().tolist() == [SYNTHETIC_YEAR]
+    assert df["tmy_datetime_local"].dt.date.nunique() == 365
+    assert df["tmy_datetime_local"].dt.date.value_counts().unique().tolist() == [24]
 
     sun_df = compute_sun_position_columns(
         df.head(3),
@@ -134,7 +142,7 @@ def test_pvgis_8760_normalized_calendar_supports_downstream_grouping(tmp_path: P
     df["dni_clear_model"] = 20.0
     daily = daily_dni_integral_ratio(
         df,
-        datetime_col="datetime",
+        datetime_col="tmy_datetime_local",
         dni_col="DNI",
         clear_col="dni_clear_model",
     )

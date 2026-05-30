@@ -113,8 +113,9 @@ def daily_dni_integral_ratio(
     Ordering (TMY note):
       Some TMY sources preserve source years that may vary by month. If pandas sorts by
       the full date key (YYYY-MM-DD), the resulting daily table can appear "scrambled".
-      Readers that expose a normalized synthetic calendar avoid this, but by default we
-      still return days sorted by (month, day), which is the natural TMY order.
+      Readers expose tmy_datetime_local for normalized local-standard TMY day grouping.
+      By default this function still returns days sorted by (month, day), which is the
+      natural TMY order.
 
     Returns a DataFrame with columns:
       date, H_dni, H_dni_clear, ratio, n_points, dt_hours

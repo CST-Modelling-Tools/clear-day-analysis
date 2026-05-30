@@ -39,13 +39,10 @@ df, md = read_tmy_csv("path/to/tmy.csv", source="auto")
 
 ## Datetime Policy
 
-Analysis workflows use the repository-standard column:
+Readers expose two normalized TMY timestamps with different roles:
 
-```text
-df["datetime"]
-```
-
-This column is the normalized TMY analysis timestamp. It is timezone-aware UTC and is the timestamp used for solar position, fitting, daily grouping, plotting, and exports unless a workflow explicitly documents otherwise.
+- `datetime`: timezone-aware UTC, used for solar-position calculations, clear-day fitting, exports, and row ordering.
+- `tmy_datetime_local`: timezone-naive local standard time in the fixed synthetic TMY calendar, used for daily DNI integration, day classification, and day-based plots.
 
 TMY providers may preserve source years for selected months. For stable annual analysis, readers normalize timestamps onto a synthetic TMY calendar. Provider source timestamps are preserved where meaningful:
 
@@ -53,7 +50,7 @@ TMY providers may preserve source years for selected months. For stable annual a
 - Solargis: `solargis_datetime_utc` when source-year information is available
 - PVGIS: `pvgis_datetime_utc`
 
-`datetime` is monotonic for normal non-leap 8760-row TMY files. For local-time providers such as Solargis, the normalized local TMY calendar is converted to UTC, so UTC boundary rows can fall just outside the synthetic local year. Do not use source-specific timestamp columns for analysis unless the task is explicitly auditing source data.
+`datetime` is monotonic for normal non-leap 8760-row TMY files. For local-time providers, UTC timestamps can fall just outside the synthetic local year at the boundaries. `tmy_datetime_local` wraps those boundary rows onto the 2001 non-leap local TMY calendar so daily classification represents local-standard solar-resource days. Do not use source-specific timestamp columns for analysis unless the task is explicitly auditing source data.
 
 ## Dependencies
 
@@ -101,7 +98,7 @@ python quick_run.py
 Outputs:
 
 - fitted clear-day parameters (`E0`, `beta`)
-- daily class counts
+- daily class counts based on local-standard TMY days
 - `<tmy_stem>_daily_classification.csv`
 
 ## Plots And Exports

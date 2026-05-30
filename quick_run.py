@@ -17,6 +17,7 @@ df, md = read_tmy_csv(TMY_PATH, source=source_arg)
 
 print("Metadata:", md)
 print("First datetime:", df["datetime"].iloc[0])
+print("First local TMY datetime:", df["tmy_datetime_local"].iloc[0])
 print("Rows:", len(df))
 
 # --- 2) Compute sun position for ALL rows ---
@@ -28,8 +29,8 @@ df = compute_sun_position_columns(
     daylight_elevation_deg=2.0,
 )
 
-df["date"] = df["datetime"].dt.date
-df["doy"] = df["datetime"].dt.dayofyear
+df["date"] = df["tmy_datetime_local"].dt.date
+df["doy"] = df["tmy_datetime_local"].dt.dayofyear
 
 print("\nSample with sun columns:")
 print(df[["datetime", "DNI", "sun_elevation_deg", "sun_azimuth_deg", "sun_is_daylight"]].head(12))
@@ -82,7 +83,7 @@ df = add_clear_dni_model(
 
 daily = daily_dni_integral_ratio(
     df,
-    datetime_col="datetime",
+    datetime_col="tmy_datetime_local",
     dni_col="DNI",
     clear_col="dni_clear_model",
     alpha_min_deg=5.0,

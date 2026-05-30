@@ -109,9 +109,9 @@ When adding support for a new TMY source:
 
 ### Datetime policy
 
-The repository uses a normalized TMY calendar for analysis.
+The repository uses normalized TMY calendars for analysis.
 
-The standard datetime column is:
+The standard UTC analysis timestamp column is:
 
 ```text
 datetime
@@ -122,13 +122,27 @@ Requirements:
 * monotonic increasing
 * timezone-aware UTC
 * suitable for annual TMY analysis
-* suitable for daily grouping and classification
+* suitable for solar-position calculations, clear-day fitting, exports, and row ordering
+
+The standard daily grouping timestamp column is:
+
+```text
+tmy_datetime_local
+```
+
+Requirements:
+
+* timezone-naive local standard time
+* normalized to a fixed non-leap synthetic TMY year
+* suitable for daily DNI integration, day classification, and day-based plots
 
 Source-specific timestamp columns may be retained for traceability.
 
 Examples:
 
 ```text
+nsrdb_datetime_utc
+solargis_datetime_utc
 pvgis_datetime_utc
 ```
 
@@ -139,7 +153,7 @@ These source-specific timestamps are intended for:
 * validation
 * export
 
-Analysis algorithms should use the normalized `datetime` column.
+UTC-based analysis algorithms should use the normalized `datetime` column. Daily grouping and classification workflows should use `tmy_datetime_local`.
 
 ### Analysis workflow
 

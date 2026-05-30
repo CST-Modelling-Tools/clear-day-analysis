@@ -3,8 +3,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import pandas as pd
-
 from clear_day_analysis.tmy_reader import read_tmy_csv
 from clear_day_analysis import compute_sun_position_columns
 from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
@@ -49,10 +47,6 @@ def run_all(
         lon_deg=md.longitude,
         daylight_elevation_deg=2.0,
     )
-
-    # --- 3) Create local standard time timestamps for correct day grouping/plots ---
-    # TMY metadata provides local_time_zone in hours; use local standard time without DST.
-    df["datetime_local"] = df["datetime"] + pd.to_timedelta(md.local_time_zone, unit="h")
 
     # --- 3b) Plot context (titles/subtitles) ---
     # PlotContext is optional, but enables the nicer headers in plots.py
@@ -102,10 +96,10 @@ def run_all(
         clear_col="dni_clear_model_plot",
     )
 
-    # --- 6) Daily integrals + ratio (use LOCAL datetime for day boundaries) ---
+    # --- 6) Daily integrals + ratio (use normalized local TMY day boundaries) ---
     daily = daily_dni_integral_ratio(
         df,
-        datetime_col="datetime_local",
+        datetime_col="tmy_datetime_local",
         dni_col="DNI",
         clear_col="dni_clear_model_fit",
         alpha_min_deg=alpha_min_deg,
@@ -136,7 +130,7 @@ def run_all(
     p2b = plot_measured_dni_heatmap(
         df,
         paths,
-        datetime_col="datetime_local",
+        datetime_col="tmy_datetime_local",
         dni_col="DNI",
         transpose_axes=True,
         context=context,
@@ -148,7 +142,7 @@ def run_all(
         df,
         daily_cls,
         paths,
-        datetime_col="datetime_local",
+        datetime_col="tmy_datetime_local",
         clear_col="dni_clear_model_plot",
         utc_offset_hours=float(md.local_time_zone),
         context=context,

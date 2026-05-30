@@ -19,14 +19,17 @@ read_tmy_csv(path, source="auto")
 The normalized DataFrame is expected to include at least:
 
 - `datetime`: repository-standard UTC analysis timestamp
+- `tmy_datetime_local`: repository-standard local TMY grouping timestamp
 - `DNI`: direct normal irradiance
 - preferably `GHI`: global horizontal irradiance
 
 ## Datetime Convention
 
-The analysis timestamp is always `df["datetime"]`.
+The UTC analysis timestamp is `df["datetime"]`.
 
-It is timezone-aware UTC and is used for solar position, clear-day fitting, daily integrals, classification, plotting, and exports unless a workflow explicitly documents a different grouping column.
+It is timezone-aware UTC and is used for solar position, clear-day fitting, exports, and row ordering.
+
+The daily grouping timestamp is `df["tmy_datetime_local"]`. It is timezone-naive local standard time in the fixed synthetic non-leap TMY year and is used for daily DNI integrals, day classification, and day-based plots. This makes a classified day correspond to a local-standard solar-resource day rather than a UTC calendar day.
 
 TMY files can contain source-year discontinuities because each month may come from a different historical year. Readers normalize the analysis timestamp onto a synthetic non-leap TMY calendar to avoid scrambled annual ordering and unstable daily grouping.
 
@@ -38,7 +41,7 @@ Provider source timestamps are preserved where meaningful:
 
 `datetime` is normalized to a monotonic, non-leap synthetic TMY calendar while preserving the provider time reference, month, day, hour, minute, and second. For local-time formats such as Solargis report-style files, the normalized local standard-time calendar is converted to UTC for solar-position calculations; this can produce UTC timestamps just outside the synthetic local year at the boundaries.
 
-Source-specific timestamps are not used for analysis.
+`tmy_datetime_local` is derived from normalized UTC `datetime` plus metadata `local_time_zone`, then wrapped onto the synthetic non-leap local TMY calendar. Source-specific timestamps are not used for analysis.
 
 ## Workflow
 
@@ -117,14 +120,14 @@ This increases `E0` by a multiplicative factor while keeping `beta` unchanged.
 
 ## Daily DNI Energy Integrals
 
-For each day `d`, energy-like integrals are computed:
+For each local-standard TMY day `d`, energy-like integrals are computed:
 
 ```text
 H_dni(d) = sum(DNI(t) * dt)
 H_clear(d) = sum(DNI_clear(t) * dt)
 ```
 
-where `dt` is the timestep in hours, inferred from the data.
+where `dt` is the timestep in hours, inferred from the local TMY grouping timestamp.
 
 Only points consistent with the clear-day model filtering are used.
 

@@ -371,7 +371,7 @@ def plot_measured_dni_heatmap(
     df: pd.DataFrame,
     paths: PlotPaths,
     *,
-    datetime_col: str = "datetime_local",
+    datetime_col: str = "tmy_datetime_local",
     dni_col: str = "DNI",
     transpose_axes: bool = True,
     vmin: float = 0.0,
@@ -382,8 +382,8 @@ def plot_measured_dni_heatmap(
 ) -> Path:
     """
     Heatmap of measured DNI by:
-      - X: TMY day number, Y: local hour (default, transpose_axes=True)
-      - or X: local hour, Y: TMY day number (transpose_axes=False)
+      - X: TMY day number, Y: local standard hour (default, transpose_axes=True)
+      - or X: local standard hour, Y: TMY day number (transpose_axes=False)
     """
     _apply_theme()
 
@@ -399,10 +399,8 @@ def plot_measured_dni_heatmap(
     if len(tmp) == 0:
         raise ValueError("No valid datetime values available for DNI heatmap.")
 
-    # Preserve natural TMY ordering from the file.
     tmp["date"] = tmp["t"].dt.date
-    day_num = pd.factorize(tmp["date"], sort=False)[0] + 1
-    tmp["day_num"] = day_num
+    tmp["day_num"] = tmp["t"].dt.dayofyear
     tmp["hour"] = tmp["t"].dt.hour + tmp["t"].dt.minute / 60.0
     tmp["dni"] = pd.to_numeric(tmp["dni"], errors="coerce")
 
@@ -646,7 +644,7 @@ def plot_day_examples_grid(
     daily_cls: pd.DataFrame,
     paths: PlotPaths,
     *,
-    datetime_col: str = "datetime",
+    datetime_col: str = "tmy_datetime_local",
     dni_col: str = "DNI",
     clear_col: str = "dni_clear_model",
     date_col: str = "date",
@@ -658,7 +656,7 @@ def plot_day_examples_grid(
 ) -> Path:
     """
     4 rows (classes) x 3 cols (min/avg/max ratio within class) showing
-    DNI(t) and DNI_clear(t) for those days.
+    DNI(t) and DNI_clear(t) for local-standard TMY days.
     """
     _apply_theme()
 
