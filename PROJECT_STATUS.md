@@ -76,6 +76,7 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 - Updated README and method documentation for multi-source TMY support, generic ingestion, and normalized datetime policy.
 - Added synthetic NSRDB reader coverage and generic auto-detection tests for NSRDB, Solargis, and PVGIS.
 - Added PVGIS tests and compact fixture coverage for reader dispatch, timestamp preservation, normalized calendar behavior, 8760-row grouping, and downstream use of normalized `datetime`.
+- Validated the common workflow on one representative local PVGIS 8760-row TMY file; the file was not committed.
 
 ## Known Technical Debt
 
@@ -85,8 +86,8 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 
 ## Pending Validation
 
-- Validate NSRDB, Solargis, and PVGIS readers against representative real files for each provider.
-- Validate PVGIS behavior on more export/database variants.
+- Validate NSRDB and Solargis readers against representative real files.
+- Validate PVGIS behavior on more export/database variants; current real-file coverage is one local PVGIS file.
 - Add focused tests for metadata fallback behavior when provider files omit location fields.
 - Confirm whether NSRDB and Solargis should also expose explicit original timestamp columns when source years differ from normalized analysis years.
 - Decide whether daily classification should standardize on UTC `datetime` or local-standard-time grouping in all user-facing workflows.
@@ -95,7 +96,7 @@ Solargis report-style files already use a stable synthetic base year for day-of-
 
 ## Recommended Next Milestones
 
-1. Validate representative real-file fixtures for NSRDB, Solargis, and PVGIS reader behavior.
+1. Validate representative real-file fixtures for NSRDB and Solargis reader behavior.
 2. Decide whether all readers should provide both normalized `datetime` and source-specific original timestamp columns.
 3. Add metadata fallback tests across all TMY readers.
 4. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.
