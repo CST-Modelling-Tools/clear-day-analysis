@@ -8,24 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from clear_day_analysis import compute_sun_position_columns
-from clear_day_analysis.tmy_reader import (
-    read_nsrdb_tmy_csv,
-    read_solargis_tmy60_p50_csv,
-)
-
-
-def read_tmy_auto(path: Path):
-    """Read a TMY CSV, trying NSRDB first and Solargis second."""
-    try:
-        return read_nsrdb_tmy_csv(path)
-    except Exception as nsrdb_error:
-        try:
-            return read_solargis_tmy60_p50_csv(path)
-        except Exception as solargis_error:
-            raise ValueError(
-                "Could not read TMY CSV as either NSRDB or Solargis. "
-                f"NSRDB error: {nsrdb_error}; Solargis error: {solargis_error}"
-            ) from solargis_error
+from clear_day_analysis.tmy_reader import read_tmy_csv
 
 
 def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> Path:
@@ -36,7 +19,7 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
     if not input_csv.exists():
         raise FileNotFoundError(f"TMY CSV not found: {input_csv}")
 
-    df, md = read_tmy_auto(input_csv)
+    df, md = read_tmy_csv(input_csv, source="auto")
 
     missing = [col for col in ("datetime", "DNI") if col not in df.columns]
     if missing:
@@ -74,9 +57,9 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Export UTC time, sun position, and DNI columns from a TMY CSV.",
+        description="Export normalized UTC time, sun position, and DNI columns from a TMY CSV.",
     )
-    parser.add_argument("input_csv", type=Path, help="Path to NSRDB or Solargis TMY CSV")
+    parser.add_argument("input_csv", type=Path, help="Path to NSRDB, Solargis, or PVGIS TMY CSV")
     parser.add_argument(
         "-o",
         "--output",

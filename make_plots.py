@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from clear_day_analysis.tmy_reader import read_nsrdb_tmy_csv, read_solargis_tmy60_p50_csv
+from clear_day_analysis.tmy_reader import read_tmy_csv
 from clear_day_analysis import compute_sun_position_columns
 from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
 from clear_day_analysis.day_classification import (
@@ -27,24 +27,6 @@ from clear_day_analysis.plots import (
 )
 
 
-def _read_tmy_auto(path: Path):
-    """
-    Read either NSRDB-style or Solargis TMY60_P50 CSV.
-    Detection is based on first header lines.
-    """
-    try:
-        with path.open("r", encoding="utf-8-sig", errors="ignore") as f:
-            head = "".join([f.readline() for _ in range(20)])
-    except Exception:
-        head = ""
-
-    h = head.lower()
-    if ("solargis_tmy60_p50" in h) or ("#typical meteorological year" in h and "#data:" in h):
-        return read_solargis_tmy60_p50_csv(path)
-
-    return read_nsrdb_tmy_csv(path)
-
-
 def run_all(
     tmy_csv: Path,
     *,
@@ -57,9 +39,9 @@ def run_all(
     location_name: str | None = None,
 ) -> None:
     # --- 1) Load TMY ---
-    df, md = _read_tmy_auto(tmy_csv)
+    df, md = read_tmy_csv(tmy_csv, source="auto")
 
-    # --- 2) Solar position (computed using UTC timestamps) ---
+    # --- 2) Solar position (computed using normalized UTC TMY timestamps) ---
     df = compute_sun_position_columns(
         df,
         datetime_col="datetime",
@@ -69,8 +51,7 @@ def run_all(
     )
 
     # --- 3) Create local standard time timestamps for correct day grouping/plots ---
-    # NSRDB metadata provides local_time_zone in hours (e.g., -7 for Arizona)
-    # We use local standard time (no DST handling) which is appropriate for NSRDB TMY usage.
+    # TMY metadata provides local_time_zone in hours; use local standard time without DST.
     df["datetime_local"] = df["datetime"] + pd.to_timedelta(md.local_time_zone, unit="h")
 
     # --- 3b) Plot context (titles/subtitles) ---
@@ -188,9 +169,9 @@ def run_all(
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="make_plots",
-        description="Generate clear-day fit and DNI classification plots from an NSRDB TMY CSV.",
+        description="Generate clear-day fit and DNI classification plots from a TMY CSV.",
     )
-    p.add_argument("tmy_csv", type=str, help="Path to NSRDB TMY CSV")
+    p.add_argument("tmy_csv", type=str, help="Path to NSRDB, Solargis, or PVGIS TMY CSV")
     p.add_argument("--dpi", type=int, default=150, help="PNG output dpi")
     p.add_argument(
         "--max-iter-plots",
