@@ -33,7 +33,7 @@ The standard workflow is:
 6. Classify days with `classify_days_by_ratio`.
 7. Optionally generate plots or CSV exports.
 
-`quick_run.py`, `make_plots.py`, and `export_tmy_sun_position_dni.py` use the generic TMY reader.
+`make_plots.py` is the recommended end-to-end script for daily classification and plots. `export_tmy_sun_position_dni.py` provides the sun-position/measured-DNI/clear-DNI export path. Both use the generic TMY reader.
 
 ## Datetime Convention
 
@@ -82,9 +82,9 @@ Provider-specific source timestamps are preserved where meaningful:
 - Normalized NSRDB `datetime` and preserved original NSRDB timestamps in `nsrdb_datetime_utc`.
 - Normalized Solargis `datetime` and preserved original Solargis timestamps in `solargis_datetime_utc` when source-year information is available.
 - Added `tmy_datetime_local` as the standard normalized local TMY timestamp for daily grouping, classification, and day-based plots.
-- Updated `quick_run.py` to use generic TMY source selection.
 - Updated `make_plots.py` to use generic TMY source selection.
 - Updated `export_tmy_sun_position_dni.py` to use generic TMY source selection.
+- Removed duplicated `quick_run.py` workflow; `make_plots.py` is now the documented end-to-end analysis entry point.
 - Updated README and method documentation for multi-source TMY support, generic ingestion, and normalized datetime policy.
 - Added synthetic NSRDB reader coverage and generic auto-detection tests for NSRDB, Solargis, and PVGIS.
 - Added PVGIS tests and compact fixture coverage for reader dispatch, timestamp preservation, normalized calendar behavior, 8760-row grouping, and downstream use of normalized TMY timestamps.
@@ -92,7 +92,7 @@ Provider-specific source timestamps are preserved where meaningful:
 - Validated the common workflow on one representative local NSRDB 8760-row TMY file; the file was not committed. The file confirmed that NSRDB source timestamps can preserve monthly source-year discontinuities, now retained in `nsrdb_datetime_utc`.
 - Validated the common workflow on one representative local Solargis 8760-row TMY60 P50 file; the file was not committed.
 - Validated generated plots and sun-position/DNI exports on representative local real files for NSRDB UTC-7, Solargis UTC+4, and PVGIS UTC. Validation copies and generated outputs were not committed.
-- Updated sun-position/DNI exports to include both `datetime` and `tmy_datetime_local` alongside canonical sun-position and DNI columns.
+- Updated sun-position/DNI exports to include both `datetime` and `tmy_datetime_local` alongside canonical sun-position, measured DNI, and fitted ASHRAE clear-day DNI columns.
 
 ## Known Technical Debt
 

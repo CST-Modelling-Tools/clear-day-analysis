@@ -80,36 +80,19 @@ pip install -U pip
 pip install -e .
 ```
 
-## Quick Run
+## End-To-End Analysis
 
-Edit `quick_run.py`:
-
-```python
-TMY_PATH = Path("path/to/your/tmy.csv")
-TMY_SOURCE = "auto"  # "auto", "nsrdb", "solargis", or "pvgis"
-```
-
-Then run:
-
-```bash
-python quick_run.py
-```
-
-Outputs:
-
-- fitted clear-day parameters (`E0`, `beta`)
-- daily class counts based on local-standard TMY days
-- `<tmy_stem>_daily_classification.csv`
-
-## Plots And Exports
-
-Generate clear-day fit and classification plots:
+Generate the daily classification CSV plus clear-day fit and classification plots:
 
 ```bash
 python make_plots.py path/to/tmy.csv
 ```
 
-Export normalized UTC time, normalized local TMY time, sun position, and DNI:
+Outputs are written next to the input TMY file, including `<tmy_stem>_daily_classification.csv` and PNG diagnostic/report plots.
+
+## Exports
+
+Export normalized UTC time, normalized local TMY time, sun position, measured DNI, and fitted clear-day DNI:
 
 ```bash
 python export_tmy_sun_position_dni.py path/to/tmy.csv

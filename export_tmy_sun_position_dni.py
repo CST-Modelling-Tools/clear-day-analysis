@@ -8,10 +8,17 @@ from pathlib import Path
 import pandas as pd
 
 from clear_day_analysis import compute_sun_position_columns
+from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
+from clear_day_analysis.day_classification import add_clear_dni_model
 from clear_day_analysis.tmy_reader import read_tmy_csv
 
 
-def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> Path:
+def export_sun_position_dni(
+    input_csv: Path,
+    output_csv: Path | None = None,
+    *,
+    print_fit_summary: bool = False,
+) -> Path:
     input_csv = Path(input_csv)
     if output_csv is not None:
         output_csv = Path(output_csv)
@@ -33,6 +40,35 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
         daylight_elevation_deg=0.0,
     )
 
+    fit = fit_ashrae_clear_day(
+        df,
+        dni_col="DNI",
+        elevation_col="sun_elevation_deg",
+        alpha_min_deg=5.0,
+        confidence=0.95,
+        outlier_mode="lower",
+        max_iter=25,
+        min_points=200,
+        enforce_envelope=True,
+        envelope_quantile=0.98,
+    )
+    df = add_clear_dni_model(
+        df,
+        E0=fit.E0,
+        beta=fit.beta,
+        dni_col="DNI",
+        elevation_col="sun_elevation_deg",
+        alpha_min_deg=5.0,
+        clear_col="dni_clear_model",
+    )
+
+    if print_fit_summary:
+        print(
+            "ASHRAE clear-day fit: "
+            f"E0={fit.E0:.3f}, beta={fit.beta:.6f}, "
+            f"n_final={fit.n_final}, converged={fit.converged}"
+        )
+
     datetime_utc = pd.to_datetime(df["datetime"], utc=True)
     tmy_datetime_local = pd.to_datetime(df["tmy_datetime_local"])
     out = pd.DataFrame(
@@ -48,9 +84,11 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
             "sun_azimuth_deg": df["sun_azimuth_deg"],
             "sun_elevation_deg": df["sun_elevation_deg"],
             "DNI": df["DNI"],
+            "dni_clear_model": df["dni_clear_model"],
             "Sun Azimuth (deg)": df["sun_azimuth_deg"],
             "Sun Elevation (deg)": df["sun_elevation_deg"],
             "DNI (W/m2)": df["DNI"],
+            "Clear DNI (W/m2)": df["dni_clear_model"],
         }
     )
 
@@ -63,7 +101,10 @@ def export_sun_position_dni(input_csv: Path, output_csv: Path | None = None) -> 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Export normalized UTC/local TMY time, sun position, and DNI columns from a TMY CSV.",
+        description=(
+            "Export normalized UTC/local TMY time, sun position, measured DNI, "
+            "and fitted ASHRAE clear-day DNI from a TMY CSV."
+        ),
     )
     parser.add_argument("input_csv", type=Path, help="Path to NSRDB, Solargis, or PVGIS TMY CSV")
     parser.add_argument(
@@ -80,7 +121,7 @@ def main() -> None:
     args = build_parser().parse_args()
 
     try:
-        output_csv = export_sun_position_dni(args.input_csv, args.output)
+        output_csv = export_sun_position_dni(args.input_csv, args.output, print_fit_summary=True)
     except Exception as exc:
         raise SystemExit(str(exc)) from exc
 
