@@ -1,6 +1,11 @@
 from ._sunpos import sunpos
 from .solar_geometry import compute_sun_position_columns
-from .tmy_reader import read_nsrdb_tmy_csv, read_solargis_tmy60_p50_csv
+from .tmy_reader import (
+    read_nsrdb_tmy_csv,
+    read_pvgis_tmy_csv,
+    read_solargis_tmy60_p50_csv,
+    read_tmy_csv,
+)
 from .ashrae_clear_day import fit_ashrae_clear_day, AshraeFitResult
 
 __all__ = [
@@ -9,5 +14,7 @@ __all__ = [
     "fit_ashrae_clear_day",
     "AshraeFitResult",
     "read_nsrdb_tmy_csv",
+    "read_pvgis_tmy_csv",
     "read_solargis_tmy60_p50_csv",
+    "read_tmy_csv",
 ]

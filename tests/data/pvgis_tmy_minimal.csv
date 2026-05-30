@@ -1,0 +1,12 @@
+# PVGIS Typical Meteorological Year
+# Latitude (decimal degrees): 33.01
+# Longitude (decimal degrees): -113.38
+# Elevation (m): 350
+month,year
+1,2018
+2,2019
+time(UTC),T2m,RH,G(h),Gb(n),Gd(h),IR(h),WS10m,WD10m,SP
+20200101:0000,12.1,50,0,0,0,300,2.1,180,101325
+20200101:0100,11.8,52,0,0,0,305,2.0,175,101320
+20200101:1200,21.3,30,650,810,120,410,4.2,210,101280
+# Radiation database: PVGIS-SARAH3

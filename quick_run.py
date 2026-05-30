@@ -1,5 +1,5 @@
 from pathlib import Path
-from clear_day_analysis.tmy_reader import read_nsrdb_tmy_csv
+from clear_day_analysis.tmy_reader import read_tmy_csv
 from clear_day_analysis import compute_sun_position_columns
 from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
 from clear_day_analysis.day_classification import (
@@ -9,8 +9,11 @@ from clear_day_analysis.day_classification import (
 )
 
 # --- 1) Load TMY ---
-path = r"C:\Users\manue_6t240gh\Dropbox\247Solar\01 - Ongoing\Hyder_Arizona\295968_33.01_-113.38_tmy-2024.csv"
-df, md = read_nsrdb_tmy_csv(path)
+TMY_PATH = Path("path/to/your/tmy.csv")
+TMY_SOURCE = "auto"  # "auto", "nsrdb", "solargis", or "pvgis"
+
+source_arg = None if TMY_SOURCE.lower() == "auto" else TMY_SOURCE
+df, md = read_tmy_csv(TMY_PATH, source=source_arg)
 
 print("Metadata:", md)
 print("First datetime:", df["datetime"].iloc[0])
@@ -103,11 +106,9 @@ print(daily_cls.sort_values("ratio", ascending=False).head(10)[["date", "ratio",
 print("\nBottom 10 cloudiest days by ratio:")
 print(daily_cls.sort_values("ratio", ascending=True).head(10)[["date", "ratio", "H_dni", "H_dni_clear", "n_points"]])
 
-tmy_path = Path(path)
-
 out_csv = (
-    tmy_path.parent
-    / f"{tmy_path.stem}_daily_classification.csv"
+    TMY_PATH.parent
+    / f"{TMY_PATH.stem}_daily_classification.csv"
 )
 
 daily_cls.to_csv(out_csv, index=False)
