@@ -33,7 +33,7 @@ The standard workflow is:
 6. Classify days with `classify_days_by_ratio`.
 7. Optionally generate plots or CSV exports.
 
-`make_plots.py` is the recommended end-to-end script for daily classification and plots. `export_tmy_sun_position_dni.py` provides the canonical sun-position/measured-DNI/clear-DNI export path. Both use the generic TMY reader.
+`make_plots.py` is the recommended end-to-end script for daily classification and plots. `export_tmy_sun_position_dni.py` provides the canonical sun-position/measured-DNI/clear-DNI export path. `plot_sun_position_reference_days.py` creates report-ready reference-day sun-position curves from that export. Analysis scripts use the generic TMY reader.
 
 ## Datetime Convention
 
@@ -93,6 +93,7 @@ Provider-specific source timestamps are preserved where meaningful:
 - Validated the common workflow on one representative local Solargis 8760-row TMY60 P50 file; the file was not committed.
 - Validated generated plots and sun-position/DNI exports on representative local real files for NSRDB UTC-7, Solargis UTC+4, and PVGIS UTC. Validation copies and generated outputs were not committed.
 - Updated sun-position/DNI exports to use a canonical column schema with `datetime`, `tmy_datetime_local`, sun-position columns, measured irradiance, and fitted ASHRAE clear-day DNI evaluated above the horizon.
+- Added a sun-position reference-day plot script for winter solstice, spring equinox, and summer solstice curves based on exported sun-position CSVs.
 
 ## Known Technical Debt
 

@@ -98,7 +98,15 @@ Export canonical columns for normalized UTC time, normalized local TMY time, sun
 python export_tmy_sun_position_dni.py path/to/tmy.csv
 ```
 
-Both scripts use `read_tmy_csv(..., source="auto")`.
+Create a report-ready sun-position reference plot from that export:
+
+```bash
+python plot_sun_position_reference_days.py path/to/tmy_sun_position_dni_utc.csv --location-name "Site Name"
+```
+
+The reference plot shows hourly azimuth/elevation curves for winter solstice, spring equinox, and summer solstice using local-standard TMY time.
+
+The analysis and export scripts use `read_tmy_csv(..., source="auto")`.
 
 ## Tests
 
