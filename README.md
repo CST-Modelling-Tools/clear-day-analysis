@@ -92,7 +92,7 @@ Outputs are written next to the input TMY file, including `<tmy_stem>_daily_clas
 
 ## Exports
 
-Export normalized UTC time, normalized local TMY time, sun position, measured DNI, and fitted clear-day DNI:
+Export canonical columns for normalized UTC time, normalized local TMY time, sun position, measured irradiance, and fitted clear-day DNI:
 
 ```bash
 python export_tmy_sun_position_dni.py path/to/tmy.csv

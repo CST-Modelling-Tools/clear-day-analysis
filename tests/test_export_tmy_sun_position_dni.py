@@ -10,13 +10,13 @@ from export_tmy_sun_position_dni import export_sun_position_dni
 
 def _write_export_nsrdb_fixture(path: Path) -> None:
     rows = [
-        "Source,Location ID,Latitude,Longitude,Elevation,Time Zone,Local Time Zone",
-        "NSRDB,Export Test Site,33.01,-113.38,350,0,0",
-        "Year,Month,Day,Hour,Minute,DNI,GHI",
+        "Source,Location ID,Latitude,Longitude,Elevation,Time Zone,Local Time Zone,",
+        "NSRDB,Export Test Site,33.01,-113.38,350,0,0,",
+        "Year,Month,Day,Hour,Minute,DNI,GHI,DHI",
     ]
     hours = pd.date_range("2001-01-01 00:00:00+00:00", periods=8760, freq="h")
     for ts in hours:
-        rows.append(f"{ts.year},{ts.month},{ts.day},{ts.hour},{ts.minute},800,900")
+        rows.append(f"{ts.year},{ts.month},{ts.day},{ts.hour},{ts.minute},800,900,100")
 
     path.write_text("\n".join(rows), encoding="utf-8")
 
@@ -32,7 +32,7 @@ def test_export_sun_position_dni_includes_standard_datetime_columns(tmp_path: Pa
 
     exported = pd.read_csv(out)
 
-    expected = {
+    expected_columns = [
         "datetime",
         "tmy_datetime_local",
         "Year",
@@ -43,19 +43,27 @@ def test_export_sun_position_dni_includes_standard_datetime_columns(tmp_path: Pa
         "Second",
         "sun_azimuth_deg",
         "sun_elevation_deg",
+        "sun_is_daylight",
         "DNI",
+        "GHI",
+        "DHI",
         "dni_clear_model",
+    ]
+    duplicate_labels = {
         "Sun Azimuth (deg)",
         "Sun Elevation (deg)",
         "DNI (W/m2)",
         "Clear DNI (W/m2)",
     }
-    assert expected.issubset(exported.columns)
+    assert exported.columns.tolist() == expected_columns
+    assert duplicate_labels.isdisjoint(exported.columns)
     assert len(exported) == 8760
     assert exported["datetime"].str.endswith("+00:00").all()
     assert exported["tmy_datetime_local"].iloc[0] == "2001-01-01 00:00:00"
 
-    daytime = exported["sun_elevation_deg"] >= 5.0
+    daytime = exported["sun_elevation_deg"] > 0.0
+    nighttime = exported["sun_elevation_deg"] <= 0.0
     assert daytime.sum() > 200
     assert np.isfinite(exported.loc[daytime, "dni_clear_model"]).all()
     assert (exported.loc[daytime, "dni_clear_model"] > 0.0).all()
+    assert (exported.loc[nighttime, "dni_clear_model"] == 0.0).all()

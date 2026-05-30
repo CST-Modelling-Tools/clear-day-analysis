@@ -29,6 +29,8 @@ def add_clear_dni_model(
     elevation_col: str = "sun_elevation_deg",
     alpha_min_deg: float = 5.0,
     clear_col: str = "dni_clear_model",
+    require_finite_dni: bool = True,
+    fill_value: float = np.nan,
 ) -> pd.DataFrame:
     """
     Add a column with the clear-day DNI model:
@@ -36,8 +38,8 @@ def add_clear_dni_model(
 
     Only computed where:
       - elevation >= alpha_min_deg
-      - DNI is finite
-    Else set to NaN.
+      - DNI is finite, unless require_finite_dni=False
+    Else set to fill_value.
 
     Returns a COPY of df with the new column.
     """
@@ -54,9 +56,11 @@ def add_clear_dni_model(
     elev_rad = np.deg2rad(elev_deg)
     sin_alpha = np.sin(elev_rad)
 
-    valid = np.isfinite(dni) & np.isfinite(sin_alpha) & (elev_deg >= alpha_min_deg) & (sin_alpha > 0.0)
+    valid = np.isfinite(sin_alpha) & (elev_deg >= alpha_min_deg) & (sin_alpha > 0.0)
+    if require_finite_dni:
+        valid = valid & np.isfinite(dni)
 
-    dni_clear = np.full(len(out), np.nan, dtype=float)
+    dni_clear = np.full(len(out), float(fill_value), dtype=float)
     # compute only for valid points
     dni_clear[valid] = float(E0) * np.exp(-float(beta) / sin_alpha[valid])
 

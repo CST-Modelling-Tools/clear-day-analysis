@@ -59,3 +59,25 @@ def test_daily_integral_ratio_and_classification():
 
     assert c1 == "extremely_clear"
     assert c2 == "extremely_cloudy"
+
+
+def test_add_clear_dni_model_default_mask_matches_classification_domain():
+    df = pd.DataFrame(
+        {
+            "sun_elevation_deg": [0.0, 4.0, 5.0, 6.0],
+            "DNI": [100.0, 100.0, 100.0, np.nan],
+        }
+    )
+
+    out = add_clear_dni_model(
+        df,
+        E0=1000.0,
+        beta=0.10,
+        dni_col="DNI",
+        elevation_col="sun_elevation_deg",
+        alpha_min_deg=5.0,
+        clear_col="dni_clear_model",
+    )
+
+    assert out["dni_clear_model"].isna().tolist() == [True, True, False, True]
+    assert out["dni_clear_model"].iloc[2] > 0.0

@@ -58,8 +58,10 @@ def export_sun_position_dni(
         beta=fit.beta,
         dni_col="DNI",
         elevation_col="sun_elevation_deg",
-        alpha_min_deg=5.0,
+        alpha_min_deg=0.0,
         clear_col="dni_clear_model",
+        require_finite_dni=False,
+        fill_value=0.0,
     )
 
     if print_fit_summary:
@@ -71,26 +73,24 @@ def export_sun_position_dni(
 
     datetime_utc = pd.to_datetime(df["datetime"], utc=True)
     tmy_datetime_local = pd.to_datetime(df["tmy_datetime_local"])
-    out = pd.DataFrame(
-        {
-            "datetime": datetime_utc.astype(str),
-            "tmy_datetime_local": tmy_datetime_local.dt.strftime("%Y-%m-%d %H:%M:%S"),
-            "Year": datetime_utc.dt.year,
-            "Month": datetime_utc.dt.month,
-            "Day": datetime_utc.dt.day,
-            "Hour": datetime_utc.dt.hour,
-            "Minute": datetime_utc.dt.minute,
-            "Second": datetime_utc.dt.second,
-            "sun_azimuth_deg": df["sun_azimuth_deg"],
-            "sun_elevation_deg": df["sun_elevation_deg"],
-            "DNI": df["DNI"],
-            "dni_clear_model": df["dni_clear_model"],
-            "Sun Azimuth (deg)": df["sun_azimuth_deg"],
-            "Sun Elevation (deg)": df["sun_elevation_deg"],
-            "DNI (W/m2)": df["DNI"],
-            "Clear DNI (W/m2)": df["dni_clear_model"],
-        }
-    )
+    out_data = {
+        "datetime": datetime_utc.astype(str),
+        "tmy_datetime_local": tmy_datetime_local.dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "Year": datetime_utc.dt.year,
+        "Month": datetime_utc.dt.month,
+        "Day": datetime_utc.dt.day,
+        "Hour": datetime_utc.dt.hour,
+        "Minute": datetime_utc.dt.minute,
+        "Second": datetime_utc.dt.second,
+        "sun_azimuth_deg": df["sun_azimuth_deg"],
+        "sun_elevation_deg": df["sun_elevation_deg"],
+        "sun_is_daylight": df["sun_is_daylight"],
+    }
+    for col in ("DNI", "GHI", "DHI"):
+        if col in df.columns:
+            out_data[col] = df[col]
+    out_data["dni_clear_model"] = df["dni_clear_model"]
+    out = pd.DataFrame(out_data)
 
     if output_csv is None:
         output_csv = input_csv.parent / f"{input_csv.stem}_sun_position_dni_utc.csv"
