@@ -1,0 +1,101 @@
+# PROJECT_STATUS.md
+
+## Last updated
+
+2026-05-30
+
+## Purpose
+
+Clear Day Analysis provides a reproducible workflow for reading Typical Meteorological Year (TMY) solar-resource files, computing solar position, fitting a clear-day DNI envelope, calculating daily DNI clearness ratios, classifying days by atmospheric clarity, and generating derived plots or exports.
+
+The project supports solar resource assessment and CSP/solar-thermal project development.
+
+## Current Supported TMY Sources
+
+Supported readers are in `src/clear_day_analysis/tmy_reader.py`.
+
+- NSRDB TMY CSV via `read_nsrdb_tmy_csv`.
+- Solargis TMY60 P50 CSV via `read_solargis_tmy60_p50_csv`.
+- PVGIS 5.x TMY CSV via `read_pvgis_tmy_csv`.
+- Generic entry point via `read_tmy_csv(path, source=None)`, with explicit or auto-detected dispatch for NSRDB, Solargis, and PVGIS.
+
+Common downstream expectations are `df["datetime"]`, `df["DNI"]`, preferably `df["GHI"]`, and `TMYMetadata` with source, location, elevation, and timezone fields.
+
+## Current Analysis Workflow
+
+The standard workflow is:
+
+1. Read TMY data into a normalized DataFrame plus `TMYMetadata`.
+2. Compute solar position with `compute_sun_position_columns`.
+3. Fit ASHRAE clear-day DNI parameters with `fit_ashrae_clear_day`.
+4. Add modeled clear-day DNI with `add_clear_dni_model`.
+5. Compute daily DNI integral ratios with `daily_dni_integral_ratio`.
+6. Classify days with `classify_days_by_ratio`.
+7. Optionally generate plots or CSV exports.
+
+`quick_run.py` uses the generic TMY reader. Plotting and export scripts have not yet been fully consolidated around it.
+
+## Datetime Convention
+
+The standard analysis timestamp column is `df["datetime"]`.
+
+Current expectations:
+
+- timezone-aware UTC
+- suitable for solar-position calculation
+- suitable for TMY annual ordering and daily grouping
+- monotonic where the reader provides a synthetic TMY calendar
+
+PVGIS-specific policy:
+
+- `pvgis_datetime_utc` preserves the original PVGIS source-year UTC timestamp.
+- `datetime` is normalized to a fixed non-leap synthetic TMY year, currently 2001.
+- Normalization preserves month, day, hour, minute, and second while removing source-year discontinuities.
+
+Solargis report-style files already use a stable synthetic base year for day-of-year/time inputs. NSRDB and other Solargis variants currently preserve parsed calendar years; daily classification sorts by month/day to avoid TMY source-year ordering artifacts.
+
+## Current Priorities
+
+- Keep TMY ingestion source-specific only inside `tmy_reader.py`.
+- Use `read_tmy_csv()` as the preferred TMY entry point.
+- Keep analysis algorithms source-agnostic after ingestion.
+- Maintain the normalized DataFrame and metadata schema across TMY sources.
+- Validate datetime changes for timezone awareness, monotonicity, daily grouping, and downstream classification.
+- Bring docs and scripts in line with current multi-source TMY support.
+
+## Recent Completed Milestones
+
+- Added generic TMY reader dispatch with `read_tmy_csv()`.
+- Added PVGIS 5.x TMY CSV support.
+- Added PVGIS irradiance normalization: `Gb(n)` to `DNI`, `G(h)` to `GHI`, and `Gd(h)` to `DHI`.
+- Preserved original PVGIS source-year timestamps in `pvgis_datetime_utc`.
+- Normalized PVGIS `datetime` to a monotonic synthetic non-leap calendar.
+- Updated `quick_run.py` to use generic TMY source selection.
+- Added PVGIS tests and compact fixture coverage for reader dispatch, timestamp preservation, normalized calendar behavior, 8760-row grouping, and downstream use of normalized `datetime`.
+
+## Known Technical Debt
+
+- `make_plots.py` still has independent TMY detection logic instead of using `read_tmy_csv()`.
+- `export_tmy_sun_position_dni.py` is still outside the generic reader path and has its own NSRDB/Solargis detection.
+- `README.md` and `docs/METHOD.md` still lag behind current multi-source support and describe the project mostly as NSRDB-based.
+- Some workflow orchestration remains in scripts rather than reusable library functions.
+- Metadata fallback behavior is not fully uniform across TMY sources when files omit location fields.
+- Plotting still uses `datetime_local` in some paths; this should be reviewed against the normalized TMY datetime policy before broader PVGIS/Solargis plotting validation.
+
+## Pending Validation
+
+- Validate NSRDB, Solargis, and PVGIS readers against representative real files for each provider.
+- Validate PVGIS behavior on more export/database variants.
+- Confirm whether NSRDB and Solargis should also expose explicit original timestamp columns when source years differ from normalized analysis years.
+- Decide whether daily classification should standardize on UTC `datetime` or local-standard-time grouping in all user-facing workflows.
+- Run CI after commits that affect reader, datetime, or workflow behavior.
+- Validate plot outputs after moving plotting scripts to `read_tmy_csv()`.
+
+## Recommended Next Milestones
+
+1. Refactor `make_plots.py` to use `read_tmy_csv()`.
+2. Refactor `export_tmy_sun_position_dni.py` to use `read_tmy_csv()` and support PVGIS.
+3. Update README and method docs for NSRDB, Solargis, PVGIS, and normalized datetime conventions.
+4. Add or confirm representative fixtures/tests for NSRDB reader behavior.
+5. Decide whether all readers should provide both normalized `datetime` and source-specific original timestamp columns.
+6. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.
