@@ -7,10 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from clear_day_analysis import compute_sun_position_columns
-from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
-from clear_day_analysis.day_classification import add_clear_dni_model
-from clear_day_analysis.tmy_reader import read_tmy_csv
+from clear_day_analysis.workflow import ClearDNIModelSpec, run_clear_day_workflow
 
 
 def export_sun_position_dni(
@@ -26,24 +23,10 @@ def export_sun_position_dni(
     if not input_csv.exists():
         raise FileNotFoundError(f"TMY CSV not found: {input_csv}")
 
-    df, md = read_tmy_csv(input_csv, source="auto")
-
-    missing = [col for col in ("datetime", "tmy_datetime_local", "DNI") if col not in df.columns]
-    if missing:
-        raise ValueError(f"Parsed TMY CSV is missing required column(s): {', '.join(missing)}")
-
-    df = compute_sun_position_columns(
-        df,
-        datetime_col="datetime",
-        lat_deg=md.latitude,
-        lon_deg=md.longitude,
+    workflow = run_clear_day_workflow(
+        input_csv,
+        source="auto",
         daylight_elevation_deg=0.0,
-    )
-
-    fit = fit_ashrae_clear_day(
-        df,
-        dni_col="DNI",
-        elevation_col="sun_elevation_deg",
         alpha_min_deg=5.0,
         confidence=0.95,
         outlier_mode="lower",
@@ -51,18 +34,17 @@ def export_sun_position_dni(
         min_points=200,
         enforce_envelope=True,
         envelope_quantile=0.98,
+        clear_models=(
+            ClearDNIModelSpec(
+                clear_col="dni_clear_model",
+                alpha_min_deg=0.0,
+                require_finite_dni=False,
+                fill_value=0.0,
+            ),
+        ),
     )
-    df = add_clear_dni_model(
-        df,
-        E0=fit.E0,
-        beta=fit.beta,
-        dni_col="DNI",
-        elevation_col="sun_elevation_deg",
-        alpha_min_deg=0.0,
-        clear_col="dni_clear_model",
-        require_finite_dni=False,
-        fill_value=0.0,
-    )
+    df = workflow.df
+    fit = workflow.fit
 
     if print_fit_summary:
         print(

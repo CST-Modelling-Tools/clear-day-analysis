@@ -7,12 +7,16 @@ from .tmy_reader import (
     read_tmy_csv,
 )
 from .ashrae_clear_day import fit_ashrae_clear_day, AshraeFitResult
+from .workflow import ClearDayWorkflowResult, ClearDNIModelSpec, run_clear_day_workflow
 
 __all__ = [
     "sunpos",
     "compute_sun_position_columns",
     "fit_ashrae_clear_day",
     "AshraeFitResult",
+    "ClearDayWorkflowResult",
+    "ClearDNIModelSpec",
+    "run_clear_day_workflow",
     "read_nsrdb_tmy_csv",
     "read_pvgis_tmy_csv",
     "read_solargis_tmy60_p50_csv",

@@ -33,7 +33,9 @@ The standard workflow is:
 6. Classify days with `classify_days_by_ratio`.
 7. Optionally generate plots or CSV exports.
 
-`make_plots.py` is the recommended end-to-end script for daily classification and plots. `export_tmy_sun_position_dni.py` provides the canonical sun-position/measured-DNI/clear-DNI export path. `plot_sun_position_reference_days.py` creates report-ready irradiance-colored reference-day sun-position plots from that export, with optional value labels and color-limit controls. Analysis scripts use the generic TMY reader.
+Shared clear-day preparation lives in `src/clear_day_analysis/workflow.py`. `run_clear_day_workflow()` centralizes TMY ingestion, UTC solar-position calculation, ASHRAE envelope fitting, and requested clear-DNI model column creation.
+
+`make_plots.py` is the recommended end-to-end script for daily classification and plots. `export_tmy_sun_position_dni.py` provides the canonical sun-position/measured-DNI/clear-DNI export path. `plot_sun_position_reference_days.py` creates report-ready irradiance-colored reference-day sun-position plots from that export, with optional value labels and color-limit controls. Analysis scripts use the generic TMY reader and shared clear-day preparation path.
 
 ## Datetime Convention
 
@@ -94,10 +96,11 @@ Provider-specific source timestamps are preserved where meaningful:
 - Validated generated plots and sun-position/DNI exports on representative local real files for NSRDB UTC-7, Solargis UTC+4, and PVGIS UTC. Validation copies and generated outputs were not committed.
 - Updated sun-position/DNI exports to use a canonical column schema with `datetime`, `tmy_datetime_local`, sun-position columns, measured irradiance, and fitted ASHRAE clear-day DNI evaluated above the horizon.
 - Added and refined a sun-position reference-day plot script for winter solstice, spring equinox, and summer solstice irradiance-colored scatter plots based on exported sun-position CSVs.
+- Consolidated duplicated ASHRAE fit and clear-DNI model preparation from `make_plots.py` and `export_tmy_sun_position_dni.py` into `run_clear_day_workflow()`.
 
 ## Known Technical Debt
 
-- Some workflow orchestration remains in scripts rather than reusable library functions.
+- Plotting, classification-output writing, export formatting, and reference-day plotting remain script-level orchestration by design.
 - Metadata fallback behavior is not fully uniform across TMY sources when files omit location fields.
 
 ## Pending Validation
@@ -109,4 +112,4 @@ Provider-specific source timestamps are preserved where meaningful:
 ## Recommended Next Milestones
 
 1. Add metadata fallback tests across all TMY readers.
-2. Consolidate repeated workflow logic from scripts into reusable library functions when it materially reduces duplication.
+2. Add regression validation for the shared workflow on representative real files when available.

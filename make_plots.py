@@ -3,11 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from clear_day_analysis.tmy_reader import read_tmy_csv
-from clear_day_analysis import compute_sun_position_columns
-from clear_day_analysis.ashrae_clear_day import fit_ashrae_clear_day
 from clear_day_analysis.day_classification import (
-    add_clear_dni_model,
     daily_dni_integral_ratio,
     classify_days_by_ratio,
 )
@@ -23,6 +19,7 @@ from clear_day_analysis.plots import (
     plot_cumulative_energy,
     plot_seasonal_energy_by_class,
 )
+from clear_day_analysis.workflow import ClearDNIModelSpec, run_clear_day_workflow
 
 
 def run_all(
@@ -36,33 +33,11 @@ def run_all(
     outlier_mode: str = "lower",
     location_name: str | None = None,
 ) -> None:
-    # --- 1) Load TMY ---
-    df, md = read_tmy_csv(tmy_csv, source="auto")
-
-    # --- 2) Solar position (computed using normalized UTC TMY timestamps) ---
-    df = compute_sun_position_columns(
-        df,
-        datetime_col="datetime",
-        lat_deg=md.latitude,
-        lon_deg=md.longitude,
+    # --- 1-5) Shared clear-day preparation ---
+    workflow = run_clear_day_workflow(
+        tmy_csv,
+        source="auto",
         daylight_elevation_deg=2.0,
-    )
-
-    # --- 3b) Plot context (titles/subtitles) ---
-    # PlotContext is optional, but enables the nicer headers in plots.py
-    context = PlotContext(
-        location_name=location_name or f"Location {md.location_id}",
-        latitude=float(md.latitude),
-        longitude=float(md.longitude),
-        tmy_label=tmy_csv.stem,
-        source=str(md.source),
-    )
-
-    # --- 4) Fit clear-day envelope (record snapshots for iteration plots) ---
-    fit = fit_ashrae_clear_day(
-        df,
-        dni_col="DNI",
-        elevation_col="sun_elevation_deg",
         alpha_min_deg=alpha_min_deg,
         confidence=confidence,
         outlier_mode=outlier_mode,
@@ -71,29 +46,31 @@ def run_all(
         enforce_envelope=True,
         envelope_quantile=envelope_quantile,
         record_snapshots=True,
+        clear_models=(
+            ClearDNIModelSpec(
+                clear_col="dni_clear_model_fit",
+                alpha_min_deg=alpha_min_deg,
+            ),
+            ClearDNIModelSpec(
+                clear_col="dni_clear_model_plot",
+                alpha_min_deg=0.0,
+                require_finite_dni=False,
+                fill_value=0.0,
+            ),
+        ),
     )
+    df = workflow.df
+    md = workflow.metadata
+    fit = workflow.fit
 
-    # --- 5) Add two clear-envelope DNI columns using FINAL parameters ---
-    # 5a) For fit/integrals/classification
-    df = add_clear_dni_model(
-        df,
-        E0=fit.E0,
-        beta=fit.beta,
-        dni_col="DNI",
-        elevation_col="sun_elevation_deg",
-        alpha_min_deg=alpha_min_deg,
-        clear_col="dni_clear_model_fit",
-    )
-
-    # 5b) For plotting: full daylight curve (sunrise -> sunset)
-    df = add_clear_dni_model(
-        df,
-        E0=fit.E0,
-        beta=fit.beta,
-        dni_col="DNI",
-        elevation_col="sun_elevation_deg",
-        alpha_min_deg=0.0,
-        clear_col="dni_clear_model_plot",
+    # --- 2) Plot context (titles/subtitles) ---
+    # PlotContext is optional, but enables the nicer headers in plots.py
+    context = PlotContext(
+        location_name=location_name or f"Location {md.location_id}",
+        latitude=float(md.latitude),
+        longitude=float(md.longitude),
+        tmy_label=tmy_csv.stem,
+        source=str(md.source),
     )
 
     # --- 6) Daily integrals + ratio (use normalized local TMY day boundaries) ---

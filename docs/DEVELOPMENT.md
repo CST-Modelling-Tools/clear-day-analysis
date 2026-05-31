@@ -4,6 +4,8 @@
 
 - src/clear_day_analysis/
   Core Python package
+- src/clear_day_analysis/workflow.py
+  Shared TMY ingestion, solar-position, ASHRAE fit, and clear-DNI model preparation used by scripts
 - cpp/bindings/
   pybind11 bindings for the C++ sun position library
 - external/Updated-PSA-sun-position-algorithm/
@@ -59,6 +61,7 @@ The tests include:
 - Synthetic-data validation of the ASHRAE clear-day fit
 - Daily DNI integral and classification checks
 - TMY reader checks for supported provider formats, UTC datetime normalization, local TMY day grouping, and source timestamp preservation
+- Shared workflow checks for the common TMY-to-clear-DNI preparation path
 
 ## Continuous integration (CI)
 

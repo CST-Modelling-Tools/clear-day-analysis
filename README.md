@@ -113,6 +113,7 @@ python plot_sun_position_reference_days.py path/to/tmy_sun_position_dni_utc.csv 
 ```
 
 The analysis and export scripts use `read_tmy_csv(..., source="auto")`.
+Their shared TMY ingestion, solar-position, ASHRAE fitting, and clear-DNI model preparation path is `clear_day_analysis.workflow.run_clear_day_workflow()`.
 
 ## Tests
 
